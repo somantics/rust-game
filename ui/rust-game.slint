@@ -1,0 +1,43 @@
+
+  struct TileGraphics {
+    floor_tile: int,
+  }
+
+  component MapTile inherits Rectangle {
+    in property <image> icon;
+    in property <length> size;
+    width: size;
+    height: size;
+    background: pink;
+
+    Image {
+        source: icon;
+        width: parent.width;
+        height: parent.height;
+    }
+  }
+
+  export component MainWindow inherits Window {
+    width: 1280px;
+    height: 720px;
+
+    in property <length> tile_size;
+    in property <int> grid_width;
+    in property <int> grid_height;
+
+    in property <[TileGraphics]> memory_tiles;
+
+    property <[image]> images_by_index: [
+      @image-url("icons/tile008.png"),
+      @image-url("icons/tile011.png"),
+      @image-url("icons/tile017.png"),
+    ];
+
+    for tile[i] in memory_tiles : MapTile {
+      x: mod(i, grid_width) * tile_size;
+      y: floor(i / grid_width) * tile_size;
+
+      icon: images_by_index[tile.floor_tile];
+      size: tile_size;
+    }
+  }
