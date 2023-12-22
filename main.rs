@@ -6,8 +6,10 @@ use map::GameMapSerializable;
 use serde_json::Result;
 use serde_json;
 
-use crate::map::{GameMap, Coordinate, GameUnit};
+use crate::{map::{GameMap, Coordinate, GameUnit}, gamestate::GameState};
+
 mod map;
+mod gamestate;
 
 slint::include_modules!();
 
@@ -16,15 +18,13 @@ fn main() {
   const GRID_WIDTH: u32 = 16 * 2 ;
   const GRID_HEIGHT: u32 = 9 * 2 ;
   const TILESET_SIZE: f32 = 32.0;
-  const STARTING_POSITION: Coordinate = Coordinate(2,2);
+  const STARTING_POSITION: Coordinate = Coordinate(5,6);
 
-  let map_path = Path::new("manualmap.json");
-  let mut level_map = load_map(&map_path);
-  //let mut level_map = GameMap::create_map(GRID_WIDTH, GRID_HEIGHT);
+  // let map_path = Path::new("manualmap.json");
+  // let level_map = load_map(&map_path);
+  let level_map = GameMap::create_map(GRID_WIDTH, GRID_HEIGHT);
 
-  let hero: GameUnit = Default::default();
-  println!("{:?}", &hero);
-  level_map.add_unit(hero, &STARTING_POSITION);
+  let game_state = GameState::create_new(level_map, STARTING_POSITION);
 
   let main_window = MainWindow::new().unwrap();
 
@@ -32,7 +32,7 @@ fn main() {
   main_window.set_grid_width(GRID_WIDTH as i32);
   main_window.set_grid_height(GRID_HEIGHT as i32);
 
-  let tiles: Vec<TileGraphics> = level_map.get_tile_image_ids()
+  let tiles: Vec<TileGraphics> = game_state.get_image_ids_for_map()
   .into_iter()
   .map (|vec| {
     std::rc::Rc::new(slint::VecModel::from(vec))
@@ -44,17 +44,14 @@ fn main() {
 
   main_window.set_memory_tiles(tiles.into());
 
-  main_window.on_tile_clicked(|x, y| attempt_move_to(x, y));
+  main_window.on_tile_clicked(move |x, y| {});
   main_window.run().unwrap();
 
   //save_map(&level_map);
   
 }
 
-fn attempt_move_to(x: i32, y: i32) {
-  let coord = Coordinate(x as u32,y as u32);
-  println!("{:?}", coord);
-}
+
 
 fn save_map(map: &GameMap) {
   let json_map = serde_json::to_string_pretty(&map.to_serializable());

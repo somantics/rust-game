@@ -1,6 +1,7 @@
 use std::collections::HashMap;
+
 use serde::{Deserialize, Serialize};
-use rand::{Rng, seq::IteratorRandom};
+use rand::Rng;
 
 #[derive(Serialize, Deserialize)]
 pub struct GameMapSerializable {
@@ -11,21 +12,11 @@ pub struct GameMapSerializable {
 
 pub struct GameMap {
   map: HashMap<Coordinate, GameTile>,
-  width: u32,
-  height: u32,
+  pub width: u32,
+  pub height: u32,
 }
 
 impl GameMap {
-
-  pub fn add_unit(&mut self, unit: GameUnit, position: &Coordinate) {
-    match self.map.get_mut(position) {
-      Some(tile) => {
-        tile.conditional_insert_unit(unit);
-      },
-      None => println!("No tile at coordinate {:?}", position)
-    };
-  }
-
   pub fn get_tile_image_ids(&self) -> Vec<Vec<i32>> {
     // go over coordinates in sorted order
     (0..self.width*self.height)
@@ -52,7 +43,7 @@ impl GameMap {
       let x = i % width;
       let y =  i / width;
       let coord = Coordinate(x, y);
-      let tile: GameTile = GameTile { root: RootTile { image_id: rng.gen_range(0..3) }, unit: None };
+      let tile: GameTile = GameTile { root: RootTile { image_id: rng.gen_range(0..3), passable: true } };
       map.insert (coord, tile);
     }
 
@@ -78,6 +69,13 @@ impl GameMap {
 
     GameMap {map: hash_map, width: other.width, height: other.height }
   }
+
+  pub fn is_tile_empty(&self, coord: Coordinate) -> bool {
+    match self.map.get(&coord) {
+      Some(tile) => tile.is_empty(),
+      None => false,
+    }
+  }
 }
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug)]
@@ -86,7 +84,7 @@ pub struct Coordinate(pub u32, pub u32);
 #[derive(Default, Serialize, Deserialize, Clone )]
 pub struct GameTile {
   root: RootTile,
-  unit: Option<GameUnit>,
+  // room for containers and stuff here
 }
 
 impl GameTile {
@@ -96,48 +94,56 @@ impl GameTile {
       self.root.image_id as i32,
     ];
 
-    // add unit image if present
-    match &self.unit {
-      Some(unit) => ids.push(unit.image_id as i32),
-      None => {println!("no unit")},
-    };
-
     let ids = ids;
     println!("Image id vec: {:?}", ids);
     return ids;
   }
-  
 
-  pub fn conditional_insert_unit(&mut self, unit: GameUnit) {
-    match &self.unit {
-      Some(_) => {},
-      None => self.unit = Some(unit)
-    };
+  pub fn is_empty(&self) -> bool {
+    if !self.root.is_passable() {return false};
+
+    true
   }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct RootTile {
   image_id: u32,
+  passable: bool,
+}
+
+impl RootTile {
+  pub fn is_passable(&self) -> bool {
+    self.passable
+  }
 }
 
 impl Default for RootTile {
   fn default() -> Self {
     RootTile { 
       image_id: 0, 
+      passable: true,
     }
   }
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameUnit {
-  image_id: u32,
+  pub image_id: u32,
+  pub position: Coordinate,
+}
+
+impl GameUnit {
+  pub fn coord(&self) -> Coordinate {
+    self.position
+  }
 }
 
 impl Default for GameUnit {
   fn default() -> Self {
     GameUnit { 
-      image_id: 3
+      image_id: 3,
+      position: Coordinate(0, 0)
     }
   }
 }
