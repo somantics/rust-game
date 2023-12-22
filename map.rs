@@ -1,6 +1,13 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use rand::Rng;
+use rand::{Rng, seq::IteratorRandom};
+
+#[derive(Serialize, Deserialize)]
+pub struct GameMapSerializable {
+  vector_map: Vec<(Coordinate, GameTile)>,
+  width: u32,
+  height: u32,
+}
 
 pub struct GameMap {
   map: HashMap<Coordinate, GameTile>,
@@ -9,18 +16,32 @@ pub struct GameMap {
 }
 
 impl GameMap {
-  pub fn get_tile_graphics(&self) -> Vec<u32> {
-    let mut vec =Vec::<u32>::new();
-    for i in 0..self.width*self.height {
-      let coord = Coordinate(i % self.width, i / self.width);
-      match self.map.get(&coord) {
-        Some(tile) => {
-          vec.push(tile.get_image_id());
-        },
-        None => {},
-      }
-    }
-    return vec;
+
+  pub fn add_unit(&mut self, unit: GameUnit, position: &Coordinate) {
+    match self.map.get_mut(position) {
+      Some(tile) => {
+        tile.conditional_insert_unit(unit);
+      },
+      None => println!("No tile at coordinate {:?}", position)
+    };
+  }
+
+  pub fn get_tile_image_ids(&self) -> Vec<Vec<i32>> {
+    // go over coordinates in sorted order
+    (0..self.width*self.height)
+      .into_iter()
+      .map(|i|  {
+        let coord = Coordinate(i % self.width, i / self.width);
+
+        // assemble image ID data
+        match self.map.get(&coord) {
+          Some(tile) => {
+            tile.get_image_ids()
+          },
+          None => panic!("Could not find game tile data at {:?}.", coord)
+        }
+      })
+      .collect()
   }
 
   pub fn create_map(width: u32, height: u32) -> GameMap {
@@ -38,49 +59,64 @@ impl GameMap {
     GameMap {map, width, height}
   }
 
-  pub fn get_serializable(&self) -> Vec<(String, &GameTile)> {
+  pub fn to_serializable(&self) -> GameMapSerializable {
 
-    let serializable_kv_pairs: Vec<(String, &GameTile)> = self.map
-    .iter()
-    .map(|(coord, tile)| { (coord.to_string(), tile) })
-    .collect();
+    let serializable_kv_pairs: Vec<(Coordinate, GameTile)> = self.map
+      .iter()
+      .map(|(coord, tile)| (*coord, tile.clone()))
+      .collect();
 
-    return serializable_kv_pairs;
+    GameMapSerializable {vector_map: serializable_kv_pairs, width: self.width, height: self.height }
+  }
+
+  pub fn from_serializable(other: GameMapSerializable) -> GameMap {
+
+    let hash_map: HashMap<Coordinate, GameTile> = other.vector_map
+      .iter()
+      .map(|(coord, tile)| (*coord, tile.clone()))
+      .collect();
+
+    GameMap {map: hash_map, width: other.width, height: other.height }
   }
 }
 
-#[derive(Hash, PartialEq, Eq, Serialize, Deserialize)]
-pub struct Coordinate(u32, u32);
+#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug)]
+pub struct Coordinate(pub u32, pub u32);
 
-impl Coordinate {
-  pub fn to_string(&self) -> String {
-    let mut out_string = self.0.to_string();
-    out_string.push(':');
-    out_string.push_str(&self.1.to_string());
-    return out_string;
-  }
-}
-
-#[derive(Default, Serialize, Deserialize)]
+#[derive(Default, Serialize, Deserialize, Clone )]
 pub struct GameTile {
   root: RootTile,
   unit: Option<GameUnit>,
 }
 
 impl GameTile {
-  pub fn get_image_id(&self) -> u32 {
+  pub fn get_image_ids(&self) -> Vec<i32> {
+    // we always have a root tile
+    let mut ids = vec![
+      self.root.image_id as i32,
+    ];
+
+    // add unit image if present
     match &self.unit {
-      Some(unit) => {
-        unit.image_id
-      },
-      None => {
-        self.root.image_id
-      },
-    } 
+      Some(unit) => ids.push(unit.image_id as i32),
+      None => {println!("no unit")},
+    };
+
+    let ids = ids;
+    println!("Image id vec: {:?}", ids);
+    return ids;
+  }
+  
+
+  pub fn conditional_insert_unit(&mut self, unit: GameUnit) {
+    match &self.unit {
+      Some(_) => {},
+      None => self.unit = Some(unit)
+    };
   }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Clone)]
 struct RootTile {
   image_id: u32,
 }
@@ -93,15 +129,15 @@ impl Default for RootTile {
   }
 }
 
-#[derive(Serialize, Deserialize)]
-struct GameUnit {
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct GameUnit {
   image_id: u32,
 }
 
 impl Default for GameUnit {
   fn default() -> Self {
     GameUnit { 
-      image_id: 0
+      image_id: 3
     }
   }
 }

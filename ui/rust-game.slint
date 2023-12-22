@@ -1,19 +1,41 @@
+global ImageIds {
+  in-out property <[image]> images_by_index: [
+      @image-url("icons/tile008.png"),
+      @image-url("icons/tile011.png"),
+      @image-url("icons/tile017.png"),
+      @image-url("icons/tile148.png"),
+  ];
+}
 
   struct TileGraphics {
-    floor_tile: int,
+    image_ids: [int],
   }
 
   component MapTile inherits Rectangle {
-    in property <image> icon;
+    callback clicked();
+
+    in property <[int]> image_ids;
+
+    in property <int> grid_x;
+    in property <int> grid_y;
+
     in property <length> size;
+
+    x: grid_x * size;
+    y: grid_y * size;
     width: size;
     height: size;
-    background: pink;
 
-    Image {
-        source: icon;
+    for id[i] in image_ids : Image {
+        source: ImageIds.images_by_index[id];
         width: parent.width;
         height: parent.height;
+    }
+
+    TouchArea {
+        clicked => {
+            root.clicked();
+        }
     }
   }
 
@@ -21,23 +43,23 @@
     width: 1280px;
     height: 720px;
 
+    callback tile_clicked(int, int);
+
     in property <length> tile_size;
     in property <int> grid_width;
     in property <int> grid_height;
 
     in property <[TileGraphics]> memory_tiles;
 
-    property <[image]> images_by_index: [
-      @image-url("icons/tile008.png"),
-      @image-url("icons/tile011.png"),
-      @image-url("icons/tile017.png"),
-    ];
-
     for tile[i] in memory_tiles : MapTile {
-      x: mod(i, grid_width) * tile_size;
-      y: floor(i / grid_width) * tile_size;
-
-      icon: images_by_index[tile.floor_tile];
+      grid_x: mod(i, grid_width);
+      grid_y: floor(i / grid_width);
       size: tile_size;
+
+      image_ids: tile.image_ids;
+
+      clicked => {
+        root.tile_clicked(self.grid_x, self.grid_y);
+      }
     }
   }

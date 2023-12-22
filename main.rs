@@ -2,9 +2,11 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 
+use map::GameMapSerializable;
+use serde_json::Result;
 use serde_json;
 
-use crate::map::GameMap;
+use crate::map::{GameMap, Coordinate, GameUnit};
 mod map;
 
 slint::include_modules!();
@@ -14,8 +16,15 @@ fn main() {
   const GRID_WIDTH: u32 = 16 * 2 ;
   const GRID_HEIGHT: u32 = 9 * 2 ;
   const TILESET_SIZE: f32 = 32.0;
+  const STARTING_POSITION: Coordinate = Coordinate(2,2);
 
-  let level_map = GameMap::create_map(GRID_WIDTH, GRID_HEIGHT);
+  let map_path = Path::new("manualmap.json");
+  let mut level_map = load_map(&map_path);
+  //let mut level_map = GameMap::create_map(GRID_WIDTH, GRID_HEIGHT);
+
+  let hero: GameUnit = Default::default();
+  println!("{:?}", &hero);
+  level_map.add_unit(hero, &STARTING_POSITION);
 
   let main_window = MainWindow::new().unwrap();
 
@@ -23,23 +32,36 @@ fn main() {
   main_window.set_grid_width(GRID_WIDTH as i32);
   main_window.set_grid_height(GRID_HEIGHT as i32);
 
-  let tiles: Vec<TileGraphics> = level_map
-    .get_tile_graphics()
-    .into_iter()
-    .map(|id| TileGraphics {floor_tile: id as i32})
-    .collect();
+  let tiles: Vec<TileGraphics> = level_map.get_tile_image_ids()
+  .into_iter()
+  .map (|vec| {
+    std::rc::Rc::new(slint::VecModel::from(vec))
+  })
+  .map(|vec_model| TileGraphics{image_ids: vec_model.into()})
+  .collect();
 
   let tiles = std::rc::Rc::new(slint::VecModel::from(tiles));
 
   main_window.set_memory_tiles(tiles.into());
+
+  main_window.on_tile_clicked(|x, y| attempt_move_to(x, y));
   main_window.run().unwrap();
 
-  save_map(&level_map);
+  //save_map(&level_map);
   
 }
 
+fn attempt_move_to(x: i32, y: i32) {
+  let coord = Coordinate(x as u32,y as u32);
+  println!("{:?}", coord);
+}
+
 fn save_map(map: &GameMap) {
-  let json_map = serialize_map(&map);
+  let json_map = serde_json::to_string_pretty(&map.to_serializable());
+  let json_map = match json_map {
+    Ok(json) => json,
+    Err(reason) => panic!("Could not be serialized: {}", reason),
+  };
 
   let path_to_map = Path::new("levelmap.json");
   let path_name = path_to_map.display();
@@ -55,18 +77,20 @@ fn save_map(map: &GameMap) {
   }
 }
 
-fn serialize_map(map: &GameMap) -> String {
-  let serializable_map = map.get_serializable();
-  match serde_json::to_string_pretty(&serializable_map) {
-    Ok(string) => string,
-    Err(error) => {println!("Failed to serialize map: {}", error); String::new()} 
-  }
-}
+fn load_map(path: &Path) -> GameMap {
+  let path_to_map = Path::new(path);
+  let path_name = path_to_map.display();
 
-fn load_map(path: &Path) {
+  let save_file = match File::open(&path_to_map) {
+    Ok(file) => file,
+    Err(reason) => panic!("Could not open {}: {}", path_name, reason),
+  };
 
-}
-
-fn deserialize_map(map_data: &str)  {
+  let deserialized: Result<GameMapSerializable> = serde_json::from_reader(save_file);
+  let deserialized = match deserialized {
+    Ok(map) => map,
+    Err(reason) => panic!("Error parsing map from file {}: {}", path_name, reason),
+  };
   
+  GameMap::from_serializable(deserialized)
 }
