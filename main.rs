@@ -2,56 +2,75 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 
-use map::GameMapSerializable;
 use serde_json::Result;
 use serde_json;
 
-use crate::{map::{GameMap, Coordinate, GameUnit}, gamestate::GameState};
+use crate::{
+  map::{GameMap, Coordinate, GameMapSerializable}, 
+  gamestate::GameState
+};
 
 mod map;
 mod gamestate;
+mod tile;
 
 slint::include_modules!();
 
+const GRID_WIDTH: u32 = 16 * 2 ;
+const GRID_HEIGHT: u32 = 9 * 2 ;
+const TILESET_SIZE: f32 = 32.0;
+const STARTING_POSITION: Coordinate = Coordinate{x: 5, y: 6};
+
 fn main() { 
 
-  const GRID_WIDTH: u32 = 16 * 2 ;
-  const GRID_HEIGHT: u32 = 9 * 2 ;
-  const TILESET_SIZE: f32 = 32.0;
-  const STARTING_POSITION: Coordinate = Coordinate(5,6);
 
-  // let map_path = Path::new("manualmap.json");
-  // let level_map = load_map(&map_path);
-  let level_map = GameMap::create_map(GRID_WIDTH, GRID_HEIGHT);
 
-  let game_state = GameState::create_new(level_map, STARTING_POSITION);
+  let game_state  = GameState::create_new(
+    GameMap::create_map(GRID_WIDTH, GRID_HEIGHT), 
+    STARTING_POSITION
+  );
 
-  let main_window = MainWindow::new().unwrap();
+  let main_window = initialize_main_window();
+  update_tile_map(&game_state, &main_window);
 
-  main_window.set_tile_size(TILESET_SIZE);
-  main_window.set_grid_width(GRID_WIDTH as i32);
-  main_window.set_grid_height(GRID_HEIGHT as i32);
+  set_up_input(game_state, &main_window);
 
+  main_window.run().unwrap();
+}
+
+fn initialize_main_window() -> MainWindow {
+  let window = MainWindow::new().unwrap();
+  window.set_tile_size(TILESET_SIZE);
+  window.set_grid_width(GRID_WIDTH as i32);
+  window.set_grid_height(GRID_HEIGHT as i32);
+  window
+}
+
+fn set_up_input(mut game: GameState, window: &MainWindow) {
+  let weak_window = window.as_weak();
+  window.on_received_input(move |action, x, y| {
+    match action {
+      InputCommand::Position => game.attempt_move_to(x, y),
+      InputCommand::Direction => game.attempt_move_direction(x, y)
+    }
+
+    update_tile_map(&game, &weak_window.unwrap());
+  });
+}
+
+fn update_tile_map(game_state: &GameState, window: &MainWindow) {
   let tiles: Vec<TileGraphics> = game_state.get_image_ids_for_map()
-  .into_iter()
-  .map (|vec| {
-    std::rc::Rc::new(slint::VecModel::from(vec))
-  })
-  .map(|vec_model| TileGraphics{image_ids: vec_model.into()})
-  .collect();
+    .into_iter()
+    .map (|vec| {
+      std::rc::Rc::new(slint::VecModel::from(vec))
+    })
+    .map(|vec_model| TileGraphics{image_ids: vec_model.into()})
+    .collect();
 
   let tiles = std::rc::Rc::new(slint::VecModel::from(tiles));
 
-  main_window.set_memory_tiles(tiles.into());
-
-  main_window.on_tile_clicked(move |x, y| {});
-  main_window.run().unwrap();
-
-  //save_map(&level_map);
-  
+  window.set_memory_tiles(tiles.into());
 }
-
-
 
 fn save_map(map: &GameMap) {
   let json_map = serde_json::to_string_pretty(&map.to_serializable());

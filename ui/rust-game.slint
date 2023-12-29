@@ -7,59 +7,85 @@ global ImageIds {
   ];
 }
 
-  struct TileGraphics {
-    image_ids: [int],
+export enum InputCommand { 
+  Direction, Position,
+ } 
+
+struct TileGraphics {
+  image_ids: [int],
+}
+
+component MapTile inherits Rectangle {
+  callback clicked();
+
+  in property <[int]> image_ids;
+
+  in property <int> grid_x;
+  in property <int> grid_y;
+
+  in property <length> size;
+
+  x: grid_x * size;
+  y: grid_y * size;
+  width: size;
+  height: size;
+
+  for id[i] in image_ids : Image {
+      source: ImageIds.images_by_index[id];
+      width: parent.width;
+      height: parent.height;
   }
 
-  component MapTile inherits Rectangle {
-    callback clicked();
-
-    in property <[int]> image_ids;
-
-    in property <int> grid_x;
-    in property <int> grid_y;
-
-    in property <length> size;
-
-    x: grid_x * size;
-    y: grid_y * size;
-    width: size;
-    height: size;
-
-    for id[i] in image_ids : Image {
-        source: ImageIds.images_by_index[id];
-        width: parent.width;
-        height: parent.height;
-    }
-
-    TouchArea {
-        clicked => {
-            root.clicked();
-        }
-    }
-  }
-
-  export component MainWindow inherits Window {
-    width: 1280px;
-    height: 720px;
-
-    callback tile_clicked(int, int);
-
-    in property <length> tile_size;
-    in property <int> grid_width;
-    in property <int> grid_height;
-
-    in property <[TileGraphics]> memory_tiles;
-
-    for tile[i] in memory_tiles : MapTile {
-      grid_x: mod(i, grid_width);
-      grid_y: floor(i / grid_width);
-      size: tile_size;
-
-      image_ids: tile.image_ids;
-
+  TouchArea {
       clicked => {
-        root.tile_clicked(self.grid_x, self.grid_y);
+          root.clicked();
       }
+  }
+}
+
+export component MainWindow inherits Window {
+  width: 1280px;
+  height: 720px;
+
+  callback received_input(InputCommand, int, int);
+
+  in property <length> tile_size;
+  in property <int> grid_width;
+  in property <int> grid_height;
+
+  in property <[TileGraphics]> memory_tiles;
+
+  for tile[i] in memory_tiles : MapTile {
+    grid_x: mod(i, grid_width);
+    grid_y: floor(i / grid_width);
+    size: tile_size;
+
+    image_ids: tile.image_ids;
+
+    clicked => {
+      root.received-input(InputCommand.Position, self.grid_x, self.grid_y);
     }
   }
+
+  keyboard_handler := FocusScope {
+    key-pressed(event) => {
+      if (event.text == "w") {
+
+        received-input(InputCommand.Direction, 0, -1);
+
+      } else if (event.text == "a") {
+
+        received-input(InputCommand.Direction, -1, 0);
+
+      } else if (event.text == "s") {
+
+        received-input(InputCommand.Direction, 0, 1);
+
+      } else if (event.text == "d") {
+
+        received-input(InputCommand.Direction, 1, 0);
+      }
+      accept
+    }
+  }
+}
