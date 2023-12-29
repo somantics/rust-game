@@ -11,7 +11,7 @@ static TILE_REGISTRY: Map<u32, &'static RootTile> = phf_map!(
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct TileID {
-  index: u32,
+  pub index: u32,
 }
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
@@ -21,7 +21,7 @@ pub struct ObjectID {
 
 #[derive(Default, Serialize, Deserialize, Clone )]
 pub struct GameTile {
-  root_tile: TileID,
+  pub root_tile: TileID,
   // room for containers and stuff here
 }
 

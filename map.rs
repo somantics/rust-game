@@ -11,7 +11,7 @@ pub struct Coordinate {
 }
 
 impl Coordinate {
-  fn distance(&self, other: Coordinate) -> f32 {
+  pub fn distance(&self, other: Coordinate) -> f32 {
     let delta_x = self.x - other.position().x;
     let delta_y = self.y - other.position().x;
 
@@ -62,13 +62,16 @@ impl GameMap {
           Some(tile) => {
             tile.get_image_ids()
           },
-          None => panic!("Could not find game tile data at {:?}.", coord)
+          None => {
+            //println!("Could not find game tile data at {:?}.", coord);
+            vec![4]
+          }
         }
       })
       .collect()
   }
 
-  pub fn create_map(width: u32, height: u32) -> GameMap {
+  pub fn create_random(width: u32, height: u32) -> GameMap {
     let mut map = HashMap::<Coordinate, GameTile>::new();
     let mut rng = rand::thread_rng();
 
@@ -79,6 +82,23 @@ impl GameMap {
       let tile: GameTile = GameTile::new_random(&mut rng);
       map.insert (coord, tile);
     }
+
+    GameMap {map, width, height}
+  }
+
+  pub fn is_tile_empty(&self, coord: Coordinate) -> bool {
+    match self.map.get(&coord) {
+      Some(tile) => tile.is_empty(),
+      None => false,
+    }
+  }
+
+  pub fn set_game_tile(&mut self, coord: Coordinate, tile: GameTile) {
+    self.map.insert(coord, tile);
+  }
+
+  pub fn create_empty(width: u32, height: u32) -> GameMap {
+    let map = HashMap::<Coordinate, GameTile>::new();
 
     GameMap {map, width, height}
   }
@@ -101,13 +121,6 @@ impl GameMap {
       .collect();
 
     GameMap {map: hash_map, width: other.width, height: other.height }
-  }
-
-  pub fn is_tile_empty(&self, coord: Coordinate) -> bool {
-    match self.map.get(&coord) {
-      Some(tile) => tile.is_empty(),
-      None => false,
-    }
   }
 }
 

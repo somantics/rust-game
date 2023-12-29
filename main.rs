@@ -2,10 +2,11 @@ use std::io::prelude::*;
 use std::path::Path;
 use std::fs::File;
 
+use mapbuilder::MapBuilder;
 use serde_json::Result;
 use serde_json;
 
-use crate::{
+use {
   map::{GameMap, Coordinate, GameMapSerializable}, 
   gamestate::GameState
 };
@@ -13,6 +14,7 @@ use crate::{
 mod map;
 mod gamestate;
 mod tile;
+mod mapbuilder;
 
 slint::include_modules!();
 
@@ -23,10 +25,11 @@ const STARTING_POSITION: Coordinate = Coordinate{x: 5, y: 6};
 
 fn main() { 
 
-
+  let bsp = MapBuilder::binary_space_partitioning(GRID_WIDTH, GRID_HEIGHT);
+  let game_map = MapBuilder::make_rooms_from_bsp(&bsp, GRID_WIDTH, GRID_HEIGHT);
 
   let game_state  = GameState::create_new(
-    GameMap::create_map(GRID_WIDTH, GRID_HEIGHT), 
+    game_map, 
     STARTING_POSITION
   );
 
