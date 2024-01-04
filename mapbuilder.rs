@@ -3,11 +3,10 @@ use std::collections::HashSet;
 
 use petgraph::visit::IntoNodeReferences;
 use rand::prelude::*;
-use rand_distr::{StandardNormal, Normal, Uniform};
+use rand_distr::StandardNormal;
 
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::stable_graph::{StableGraph, NodeReferences};
-use slint::MapModel;
+use petgraph::stable_graph::StableGraph;
 
 use crate::tile;
 use crate::{
@@ -69,19 +68,8 @@ impl MapBuilder {
   pub fn generate_new(size_x: u32, size_y: u32) -> GameMap {
 
     let bsp_tree = MapBuilder::binary_space_partitioning(size_x, size_y);
-    let bsp_leaves = MapBuilder::leaves_from_bsp(&bsp_tree);
-    let mut graph = StableGraph::<BoxExtends,(), petgraph::Undirected>::default();
-
-    for index in bsp_leaves {
-      let room_box = match bsp_tree.node_weight(index) {
-        Some(extends) => BoxExtends::random_subbox(extends, 3),
-        None => continue,
-      };
-
-      graph.add_node(room_box);
-    }
-    
-    graph = MapBuilder::make_connected_graph(&graph, 2);
+    let graph = MapBuilder::make_rooms_from_bsp(&bsp_tree);
+    let graph = MapBuilder::make_connected_graph(&graph, 2);
 
     MapBuilder::draw_rooms_to_map(&graph, size_x, size_y)
   }
@@ -119,6 +107,31 @@ impl MapBuilder {
     MapBuilder::split_branch(branch_a, graph, current_depth + 1, max_depth);
     
     MapBuilder::split_branch(branch_b, graph, current_depth + 1, max_depth);
+  }
+
+  fn make_rooms_from_bsp(bsp_tree: &Graph<BoxExtends, (), petgraph::Undirected>) -> StableGraph<BoxExtends,(), petgraph::Undirected> {
+    
+    let bsp_leaves = MapBuilder::leaves_from_bsp(&bsp_tree);
+    let mut graph = StableGraph::<BoxExtends,(), petgraph::Undirected>::default();
+
+    for index in bsp_leaves {
+      let room_box = match bsp_tree.node_weight(index) {
+        Some(extends) => BoxExtends::random_subbox(extends, 3),
+        None => continue,
+      };
+
+      graph.add_node(room_box);
+    };
+
+    graph
+  }
+
+  fn leaves_from_bsp<'a>(graph: &'a Graph<BoxExtends, (), petgraph::Undirected>) -> impl Iterator<Item = NodeIndex > + 'a {
+
+    graph.node_indices()
+      .filter(|index| {
+        graph.neighbors_undirected(*index).count() == 1
+      })
   }
 
   fn make_connected_graph(room_graph: &StableGraph::<BoxExtends,(), petgraph::Undirected>, max_scan_distance: i32) -> StableGraph<BoxExtends, (), petgraph::prelude::Undirected> {
@@ -331,14 +344,6 @@ impl MapBuilder {
       }
     }
     
-  }
-
-  fn leaves_from_bsp<'a>(graph: &'a Graph<BoxExtends, (), petgraph::Undirected>) -> impl Iterator<Item = NodeIndex > + 'a {
-
-    graph.node_indices()
-      .filter(|index| {
-        graph.neighbors_undirected(*index).count() == 1
-      })
   }
 }
 #[derive(Debug, Default, Clone, Copy)]
