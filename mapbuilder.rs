@@ -205,12 +205,10 @@ impl MapBuilder {
 
     // floor and walls
     for index in leaves {
-      let section_box: BoxExtends = match graph.node_weight(index) {
+      let room_box: BoxExtends = match graph.node_weight(index) {
         Some(weight) => *weight,
         None => continue
       };
-
-      let room_box = BoxExtends::random_subbox(&section_box, 3);
 
       let (left, top) = (room_box.top_left.x, room_box.top_left.y);
       let (right, bottom) = (room_box.bottom_right.x, room_box.bottom_right.y);
@@ -266,7 +264,6 @@ impl MapBuilder {
     let b_x_range: HashSet<i32> = HashSet::from_iter(box_b.top_left.x + 1..box_b.bottom_right.x);
     let x_range_overlap: HashSet<i32> = a_x_range.intersection(&b_x_range).map(|i| *i).collect();
 
-
     if x_range_overlap.len() > 0 {
 
       let corridor_x = *x_range_overlap.iter().next().unwrap();
@@ -287,8 +284,6 @@ impl MapBuilder {
       let corridor_y = *y_range_overlap.iter().next().unwrap();
       let corridor_start = Coordinate {x: box_a.position().x, y: corridor_y};
       let corridor_end = Coordinate {x: box_b.position().x, y: corridor_y};
-
-      println!("Corridor start: {:?}, corridor end: {:?}", corridor_start, corridor_end);
 
       MapBuilder::draw_corridor(corridor_start, corridor_end, map);
 
