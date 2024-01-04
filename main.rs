@@ -18,15 +18,17 @@ mod mapbuilder;
 
 slint::include_modules!();
 
-const GRID_WIDTH: u32 = 16 * 2 ;
-const GRID_HEIGHT: u32 = 9 * 2 ;
+const GRID_WIDTH: u32 = (16.0 * 2.5) as u32 ;
+const GRID_HEIGHT: u32 = (9.0 * 2.5) as u32 ;
 const TILESET_SIZE: f32 = 32.0;
 const STARTING_POSITION: Coordinate = Coordinate{x: 5, y: 6};
 
 fn main() { 
 
-  let bsp = MapBuilder::binary_space_partitioning(GRID_WIDTH, GRID_HEIGHT);
-  let game_map = MapBuilder::make_rooms_from_bsp(&bsp, GRID_WIDTH, GRID_HEIGHT);
+  //let bsp = MapBuilder::binary_space_partitioning(GRID_WIDTH, GRID_HEIGHT);
+  //let game_map = MapBuilder::make_rooms_from_bsp(&bsp, GRID_WIDTH, GRID_HEIGHT);
+
+  let game_map = MapBuilder::generate_new(GRID_WIDTH, GRID_HEIGHT);
 
   let game_state  = GameState::create_new(
     game_map, 
@@ -62,6 +64,7 @@ fn set_up_input(mut game: GameState, window: &MainWindow) {
 }
 
 fn update_tile_map(game_state: &GameState, window: &MainWindow) {
+
   let tiles: Vec<TileGraphics> = game_state.get_image_ids_for_map()
     .into_iter()
     .map (|vec| {
@@ -76,6 +79,7 @@ fn update_tile_map(game_state: &GameState, window: &MainWindow) {
 }
 
 fn save_map(map: &GameMap) {
+
   let json_map = serde_json::to_string_pretty(&map.to_serializable());
   let json_map = match json_map {
     Ok(json) => json,
@@ -97,6 +101,7 @@ fn save_map(map: &GameMap) {
 }
 
 fn load_map(path: &Path) -> GameMap {
+  
   let path_to_map = Path::new(path);
   let path_name = path_to_map.display();
 

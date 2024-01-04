@@ -5,6 +5,7 @@ global ImageIds {
       @image-url("icons/tile017.png"),
       @image-url("icons/tile148.png"),
       @image-url("icons/tile031.png"), // 4 is none found
+      @image-url("icons/tile035.png"), 
   ];
 }
 
@@ -45,8 +46,8 @@ component MapTile inherits Rectangle {
 }
 
 export component MainWindow inherits Window {
-  width: 1280px;
-  height: 720px;
+  width: grid-width * tile-size;
+  height: grid-height * tile-size;
 
   callback received_input(InputCommand, int, int);
 

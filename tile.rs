@@ -7,7 +7,12 @@ static TILE_REGISTRY: Map<u32, &'static RootTile> = phf_map!(
   0u32 => &RootTile {image_id: 0, passable: true},
   1u32 => &RootTile {image_id: 1, passable: true},
   2u32 => &RootTile {image_id: 2, passable: false},
+  3u32 => &RootTile {image_id: 5, passable: true},
 );
+
+pub const FLOOR_TILE_ID: TileID = TileID{index:0};
+pub const WALL_TILE_ID: TileID = TileID{index:2};
+pub const PATH_TEST_TILE: TileID = TileID{index:3};
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct TileID {
@@ -26,7 +31,9 @@ pub struct GameTile {
 }
 
 impl GameTile {
+
   pub fn get_image_ids(&self) -> Vec<i32> {
+
     let mut ids = vec![];
     
     let tile = self.get_root_tile();
@@ -41,6 +48,7 @@ impl GameTile {
   }
 
   pub fn is_empty(&self) -> bool {
+
     let tile = self.get_root_tile().expect("No root tile found.");
     if !tile.passable {return false};
 
@@ -48,10 +56,12 @@ impl GameTile {
   }
 
   pub fn new_random(rng: &mut ThreadRng) -> GameTile {
+
     GameTile {root_tile: TileID { index: rng.gen_range(0..3) } }
   }
 
   fn get_root_tile(&self) -> Option<&RootTile> {
+    
     TILE_REGISTRY.get(&self.root_tile.index).copied()
   }
 }

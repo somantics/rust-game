@@ -6,12 +6,14 @@ use crate::tile::GameTile;
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct Coordinate {
-  pub x: u32,
-  pub y: u32
+  pub x: i32,
+  pub y: i32
 }
 
 impl Coordinate {
+
   pub fn distance(&self, other: Coordinate) -> f32 {
+
     let delta_x = self.x - other.position().x;
     let delta_y = self.y - other.position().x;
 
@@ -20,9 +22,11 @@ impl Coordinate {
 }
 
 impl Euclidian for Coordinate {
+
   fn distance_to<T>(&self, other: T) -> f32
     where 
       T: Euclidian {
+
       self.distance(other.position())
   }
 
@@ -50,12 +54,14 @@ pub struct GameMap {
 }
 
 impl GameMap {
+
   pub fn get_tile_image_ids(&self) -> Vec<Vec<i32>> {
+
     // go over coordinates in sorted order
     (0..self.width*self.height)
       .into_iter()
       .map(|i|  {
-        let coord = Coordinate{x: i % self.width, y: i / self.width};
+        let coord = Coordinate{x: (i % self.width) as i32, y: (i / self.width) as i32};
 
         // assemble image ID data
         match self.map.get(&coord) {
@@ -72,12 +78,13 @@ impl GameMap {
   }
 
   pub fn create_random(width: u32, height: u32) -> GameMap {
+
     let mut map = HashMap::<Coordinate, GameTile>::new();
     let mut rng = rand::thread_rng();
 
     for i in 0..width*height {
-      let x = i % width;
-      let y =  i / width;
+      let x = (i % width) as i32;
+      let y =  (i / width) as i32;
       let coord = Coordinate{x: x, y: y };
       let tile: GameTile = GameTile::new_random(&mut rng);
       map.insert (coord, tile);
@@ -87,6 +94,7 @@ impl GameMap {
   }
 
   pub fn is_tile_empty(&self, coord: Coordinate) -> bool {
+
     match self.map.get(&coord) {
       Some(tile) => tile.is_empty(),
       None => false,
@@ -94,10 +102,16 @@ impl GameMap {
   }
 
   pub fn set_game_tile(&mut self, coord: Coordinate, tile: GameTile) {
+
     self.map.insert(coord, tile);
   }
 
+  pub fn get_game_tile(&self, coord: Coordinate) -> Option<&GameTile> {
+    self.map.get(&coord)
+  }
+
   pub fn create_empty(width: u32, height: u32) -> GameMap {
+
     let map = HashMap::<Coordinate, GameTile>::new();
 
     GameMap {map, width, height}
@@ -131,7 +145,9 @@ pub struct GameUnit {
 }
 
 impl Default for GameUnit {
+
   fn default() -> Self {
+
     GameUnit { 
       image_id: 3,
       position: Coordinate::default(),
@@ -140,6 +156,7 @@ impl Default for GameUnit {
 }
 
 pub trait Euclidian {
+  
   fn distance_to<T>(&self, other: T) -> f32
   where 
     T: Euclidian;
