@@ -1,7 +1,6 @@
+use ::phf::{phf_map, Map};
+use rand::{rngs::ThreadRng, Rng};
 use serde::{Deserialize, Serialize};
-use rand::{Rng, rngs::ThreadRng};
-use ::phf::{Map, phf_map};
-
 
 static TILE_REGISTRY: Map<u32, &'static RootTile> = phf_map!(
   0u32 => &RootTile {image_id: 0, passable: true},
@@ -10,73 +9,74 @@ static TILE_REGISTRY: Map<u32, &'static RootTile> = phf_map!(
   3u32 => &RootTile {image_id: 5, passable: true},
 );
 
-pub const FLOOR_TILE_ID: TileID = TileID{index:0};
-pub const WALL_TILE_ID: TileID = TileID{index:2};
-pub const PATH_TEST_TILE: TileID = TileID{index:3};
+pub const FLOOR_TILE_ID: TileID = TileID { index: 0 };
+pub const WALL_TILE_ID: TileID = TileID { index: 2 };
+pub const PATH_TEST_TILE: TileID = TileID { index: 3 };
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct TileID {
-  pub index: u32,
+    pub index: u32,
 }
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct ObjectID {
-  index: u32,
+    index: u32,
 }
 
-#[derive(Default, Serialize, Deserialize, Clone )]
+#[derive(Default, Serialize, Deserialize, Clone)]
 pub struct GameTile {
-  pub root_tile: TileID,
-  // room for containers and stuff here
+    pub root_tile: TileID,
+    // room for containers and stuff here
 }
 
 impl GameTile {
+    pub fn get_image_ids(&self) -> Vec<i32> {
+        let mut ids = vec![];
 
-  pub fn get_image_ids(&self) -> Vec<i32> {
+        let tile = self.get_root_tile();
 
-    let mut ids = vec![];
-    
-    let tile = self.get_root_tile();
+        match tile {
+            Some(root) => ids.push(root.image_id as i32),
+            None => (),
+        };
 
-    match tile {
-      Some(root) => ids.push(root.image_id as i32),
-      None => (),
-    };
+        let ids = ids;
+        ids
+    }
 
-    let ids = ids;
-    ids
-  }
+    pub fn is_empty(&self) -> bool {
+        let tile = self.get_root_tile().expect("No root tile found.");
+        if !tile.passable {
+            return false;
+        };
 
-  pub fn is_empty(&self) -> bool {
+        true
+    }
 
-    let tile = self.get_root_tile().expect("No root tile found.");
-    if !tile.passable {return false};
+    pub fn new_random(rng: &mut ThreadRng) -> GameTile {
+        GameTile {
+            root_tile: TileID {
+                index: rng.gen_range(0..3),
+            },
+        }
+    }
 
-    true
-  }
-
-  pub fn new_random(rng: &mut ThreadRng) -> GameTile {
-
-    GameTile {root_tile: TileID { index: rng.gen_range(0..3) } }
-  }
-
-  fn get_root_tile(&self) -> Option<&RootTile> {
-    
-    TILE_REGISTRY.get(&self.root_tile.index).copied()
-  }
+    fn get_root_tile(&self) -> Option<&RootTile> {
+        TILE_REGISTRY.get(&self.root_tile.index).copied()
+    }
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 struct RootTile {
-  image_id: u32,
-  passable: bool,
+    image_id: u32,
+    passable: bool,
 }
 
 impl Default for RootTile {
-  fn default() -> Self {
-    RootTile { 
-      image_id: 0, 
-      passable: true,
+    fn default() -> Self {
+        RootTile {
+            image_id: 0,
+            passable: true,
+        }
     }
-  }
 }

@@ -1,4 +1,3 @@
-
 fn main() {
-  slint_build::compile("ui/rust-game.slint").unwrap();
+    slint_build::compile("ui/rust-game.slint").unwrap();
 }
