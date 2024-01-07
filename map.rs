@@ -1,48 +1,11 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::tile::GameTile;
+use crate::tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY};
 
-#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
-pub struct Coordinate {
-    pub x: i32,
-    pub y: i32,
-}
-
-impl Coordinate {
-    pub fn distance(&self, other: Coordinate) -> f32 {
-        let delta_x = self.x - other.position().x;
-        let delta_y = self.y - other.position().x;
-
-        ((delta_x as f32).powf(2.0) + (delta_y as f32).powf(2.0)).sqrt()
-    }
-}
-
-impl Euclidian for Coordinate {
-    fn distance_to<T>(&self, other: T) -> f32
-    where
-        T: Euclidian,
-    {
-        self.distance(other.position())
-    }
-
-    fn position(&self) -> Coordinate {
-        *self
-    }
-}
-
-#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
-pub struct ImageId {
-    index: i32, // for compatibility with slint
-}
-
-#[derive(Serialize, Deserialize)]
-pub struct GameMapSerializable {
-    vector_map: Vec<(Coordinate, GameTile)>,
-    width: u32,
-    height: u32,
-}
-
+// Stores all game tiles for a particular map. This contains information about
+// visual tiles to use, passability, and in the future interactable objects
+// like doors and chests. Does not store creatures or players.
 pub struct GameMap {
     map: HashMap<Coordinate, GameTile>,
     pub width: u32,
@@ -64,27 +27,12 @@ impl GameMap {
                 match self.map.get(&coord) {
                     Some(tile) => tile.get_image_ids(),
                     None => {
-                        //println!("Could not find game tile data at {:?}.", coord);
-                        vec![4]
+                        let im_id = TILE_REGISTRY[&TILE_NOT_FOUND.index].image_id as i32;
+                        vec![im_id]
                     }
                 }
             })
             .collect()
-    }
-
-    pub fn create_random(width: u32, height: u32) -> GameMap {
-        let mut map = HashMap::<Coordinate, GameTile>::new();
-        let mut rng = rand::thread_rng();
-
-        for i in 0..width * height {
-            let x = (i % width) as i32;
-            let y = (i / width) as i32;
-            let coord = Coordinate { x: x, y: y };
-            let tile: GameTile = GameTile::new_random(&mut rng);
-            map.insert(coord, tile);
-        }
-
-        GameMap { map, width, height }
     }
 
     pub fn is_tile_empty(&self, coord: Coordinate) -> bool {
@@ -137,6 +85,12 @@ impl GameMap {
     }
 }
 
+#[derive(Serialize, Deserialize)]
+pub struct GameMapSerializable {
+    vector_map: Vec<(Coordinate, GameTile)>,
+    width: u32,
+    height: u32,
+}
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct GameUnit {
     pub image_id: u32,
@@ -149,6 +103,39 @@ impl Default for GameUnit {
             image_id: 3,
             position: Coordinate::default(),
         }
+    }
+}
+
+#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
+pub struct ImageId {
+    index: i32, // for compatibility with slint
+}
+
+#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default, Ord, PartialOrd)]
+pub struct Coordinate {
+    pub x: i32,
+    pub y: i32,
+}
+
+impl Coordinate {
+    pub fn distance(&self, other: Coordinate) -> f32 {
+        let delta_x = self.x - other.position().x;
+        let delta_y = self.y - other.position().x;
+
+        ((delta_x as f32).powf(2.0) + (delta_y as f32).powf(2.0)).sqrt()
+    }
+}
+
+impl Euclidian for Coordinate {
+    fn distance_to<T>(&self, other: T) -> f32
+    where
+        T: Euclidian,
+    {
+        self.distance(other.position())
+    }
+
+    fn position(&self) -> Coordinate {
+        *self
     }
 }
 

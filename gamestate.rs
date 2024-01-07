@@ -1,5 +1,6 @@
 use crate::map::{Coordinate, GameMap, GameUnit};
 
+// Authoritative and only mutable state in the game logic (outside of frontend).
 pub struct GameState {
     current_level: GameMap,
     creature_list: Vec<(GameUnit, Coordinate)>,
@@ -18,6 +19,7 @@ impl GameState {
     }
 
     pub fn get_image_ids_for_map(&self) -> Vec<Vec<i32>> {
+        // Collects everything on the map that needs to be drawn.
         let mut tile_images = self.current_level.get_tile_image_ids();
         self.add_units_to_draw(&mut tile_images);
         tile_images
@@ -41,8 +43,6 @@ impl GameState {
     fn move_player_to(&mut self, coord: Coordinate) {
         if self.current_level.is_tile_empty(coord) && self.no_creature_at(coord) {
             self.player_position = coord;
-        } else {
-            // tell the player they can't
         }
     }
 
@@ -57,6 +57,8 @@ impl GameState {
     }
 
     fn add_units_to_draw(&self, tile_image_ids: &mut Vec<Vec<i32>>) {
+        // Puts creature image ids on top of tile ids in data to pass to frontend.
+
         // convert coordinate to location index
         let creatures_by_index = self.creature_list.iter().map(|(unit, pos)| {
             let index = ((pos.x + pos.y) as u32 * self.current_level.width) as usize;

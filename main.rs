@@ -11,32 +11,26 @@ use {
     map::{Coordinate, GameMap, GameMapSerializable},
 };
 
+mod boxextends;
 mod gamestate;
 mod map;
 mod mapbuilder;
 mod tile;
-mod boxextends;
 
 slint::include_modules!();
 
-const GRID_WIDTH: u32 = (16.0 * 2.5) as u32;
-const GRID_HEIGHT: u32 = (9.0 * 2.5) as u32;
+const GRID_WIDTH: u32 = (16.0 * 2.0) as u32;
+const GRID_HEIGHT: u32 = (9.0 * 2.0) as u32;
 const TILESET_SIZE: f32 = 32.0;
 const STARTING_POSITION: Coordinate = Coordinate { x: 5, y: 6 };
 
 fn main() {
-    //let bsp = MapBuilder::binary_space_partitioning(GRID_WIDTH, GRID_HEIGHT);
-    //let game_map = MapBuilder::make_rooms_from_bsp(&bsp, GRID_WIDTH, GRID_HEIGHT);
-
     let game_map = MapBuilder::generate_new(GRID_WIDTH, GRID_HEIGHT);
-
     let game_state = GameState::create_new(game_map, STARTING_POSITION);
 
     let main_window = initialize_main_window();
     update_tile_map(&game_state, &main_window);
-
     set_up_input(game_state, &main_window);
-
     main_window.run().unwrap();
 }
 
@@ -49,18 +43,22 @@ fn initialize_main_window() -> MainWindow {
 }
 
 fn set_up_input(mut game: GameState, window: &MainWindow) {
+    // Sets up responses to slint input callback.
     let weak_window = window.as_weak();
     window.on_received_input(move |action, x, y| {
+        // This is the game loop
         match action {
             InputCommand::Position => game.attempt_move_to(x, y),
             InputCommand::Direction => game.attempt_move_direction(x, y),
         }
 
+        // Equivalent to draw.
         update_tile_map(&game, &weak_window.unwrap());
     });
 }
 
 fn update_tile_map(game_state: &GameState, window: &MainWindow) {
+    // Updates frontend's internal data for tiles, which triggers redraw.
     let tiles: Vec<TileGraphics> = game_state
         .get_image_ids_for_map()
         .into_iter()

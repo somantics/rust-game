@@ -1,12 +1,13 @@
-
-use std::cmp::{max, min};
 use rand::prelude::*;
 use rand_distr::StandardNormal;
+use std::cmp::{max, min};
 
 use crate::map::{Coordinate, Euclidian};
 use crate::mapbuilder::Axis;
 
-#[derive(Debug, Default, Clone, Copy)]
+// Tracks areas on the grid and supports overlapping and orthogonal adjacency checks.
+// is also responsible for dividing space when an area is split into two.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash, Ord, PartialOrd)]
 pub struct BoxExtends {
     pub top_left: Coordinate,
     pub bottom_right: Coordinate,
@@ -56,6 +57,7 @@ impl BoxExtends {
     }
 
     pub fn get_axis_size(&self, axis: Axis) -> i32 {
+        // Axis size counts whole length of the side, i.e. x:3 to x:5 is len 3.
         match axis {
             Axis::Horizontal => self.bottom_right.x - self.top_left.x + 1,
             Axis::Vertical => self.bottom_right.y - self.top_left.y + 1,
@@ -63,15 +65,16 @@ impl BoxExtends {
     }
 
     pub fn get_area(&self) -> i32 {
-        let delta_x = self.bottom_right.x - self.top_left.x;
-        let delta_y = self.bottom_right.y - self.top_left.y;
+        let delta_x = self.bottom_right.x - self.top_left.x + 1;
+        let delta_y = self.bottom_right.y - self.top_left.y + 1;
 
         delta_x * delta_y
     }
 
     pub fn get_inner_area(&self) -> i32 {
-        let inner_delta_x = self.bottom_right.x - self.top_left.x - 2;
-        let inner_delta_y = self.bottom_right.y - self.top_left.y - 2;
+        // inner area ignores walls in area calculation
+        let inner_delta_x = self.bottom_right.x - self.top_left.x - 1;
+        let inner_delta_y = self.bottom_right.y - self.top_left.y - 1;
 
         if inner_delta_x <= 0 || inner_delta_y <= 0 {
             return 0;
@@ -81,7 +84,11 @@ impl BoxExtends {
     }
 
     pub fn random_subbox(area: &BoxExtends, shrink_term: f32, min_side_length: i32) -> BoxExtends {
-        // set up distribution squashed into correct range
+        // Create a new box randomly shrinked from the provided one.
+        // Used in randomizing size of rooms in a partition from the bsp.
+
+        // Normal distribution yields weight towards small shrinking.
+        // Clamping prevents extreme values but creates probability artefacts.
         let mut rng = thread_rng()
             .sample_iter::<f32, _>(StandardNormal)
             .map(|val| val + shrink_term)
@@ -117,11 +124,13 @@ impl BoxExtends {
     pub fn split_box(area: &BoxExtends) -> (BoxExtends, BoxExtends) {
         let min_margin = 0.35;
 
+        // Squashes values in the middle, but clamping yields probability artefacts.
         let mut rng = thread_rng()
             .sample_iter::<f32, _>(StandardNormal)
             .map(|val| val + 0.5)
             .map(|val| val.clamp(min_margin, 1.0 - min_margin));
 
+        // Scale side selection probability with side len ratio.
         let horizontal_size = area.get_axis_size(Axis::Horizontal);
         let vertical_size = area.get_axis_size(Axis::Vertical);
         let side_ratio = horizontal_size as f32 / vertical_size as f32;
@@ -182,6 +191,8 @@ impl BoxExtends {
     }
 
     pub fn make_edge_vicinity_boxes(area: &BoxExtends, scan_distance: i32) -> Vec<BoxExtends> {
+        // Creates hitboxes that check the sides of 'area' up to 'scan_distance'
+        // TODO: RENAME
         let above = BoxExtends {
             top_left: Coordinate {
                 x: area.top_left.x + 1,
