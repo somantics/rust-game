@@ -6,6 +6,7 @@ use crate::tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY};
 // Stores all game tiles for a particular map. This contains information about
 // visual tiles to use, passability, and in the future interactable objects
 // like doors and chests. Does not store creatures or players.
+#[derive(Debug)]
 pub struct GameMap {
     map: HashMap<Coordinate, GameTile>,
     pub width: u32,
@@ -85,7 +86,7 @@ impl GameMap {
     }
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Serialize, Deserialize, Debug)]
 pub struct GameMapSerializable {
     vector_map: Vec<(Coordinate, GameTile)>,
     width: u32,

@@ -263,7 +263,7 @@ impl MapBuilder {
                 None => continue,
             };
 
-            MapBuilder::draw_room(room_box, &mut map, size_x, size_y);
+            MapBuilder::draw_room(room_box, &mut map);
         }
 
         // Drawing corridors
@@ -285,8 +285,6 @@ impl MapBuilder {
     fn draw_room(
         room_box: BoxExtends,
         map: &mut GameMap,
-        size_x: u32,
-        size_y: u32,
     ) {
         let (left, top) = (room_box.top_left.x, room_box.top_left.y);
         let (right, bottom) = (room_box.bottom_right.x, room_box.bottom_right.y);
@@ -296,7 +294,7 @@ impl MapBuilder {
             map.set_game_tile(
                 Coordinate { x: x, y: top },
                 GameTile {
-                    root_tile: tile::FLOOR_TILE_ID,
+                    root_tile: tile::WALL_TILE_ID,
                 },
             );
 
@@ -313,7 +311,7 @@ impl MapBuilder {
                     root_tile: tile::FLOOR_TILE_ID,
                 };
                 let wall = GameTile {
-                    root_tile: WALL_TILE_ID,
+                    root_tile: tile::WALL_TILE_ID,
                 };
 
                 let tile;
@@ -378,7 +376,8 @@ impl MapBuilder {
     }
 
     fn draw_vertical_corridor(start: Coordinate, end: Coordinate, map: &mut GameMap) {
-        let vertical = |y| Coordinate { x: start.x, y: y };
+
+        let center = |y| Coordinate { x: start.x, y: y };
         let left_of = |coord: Coordinate| Coordinate {
             x: coord.x - 1,
             ..coord
@@ -395,12 +394,12 @@ impl MapBuilder {
         };
 
         for y in low_y..=high_y {
-            match map.get_game_tile(vertical(y)) {
+            match map.get_game_tile(center(y)) {
                 Some(GameTile {
                     root_tile: tile::WALL_TILE_ID,
                 }) => {
                     map.set_game_tile(
-                        vertical(y),
+                        center(y),
                         GameTile {
                             root_tile: tile::FLOOR_TILE_ID,
                         },
@@ -409,19 +408,19 @@ impl MapBuilder {
                 Some(_) => {}
                 None => {
                     map.set_game_tile(
-                        vertical(y),
+                        center(y),
                         GameTile {
                             root_tile: tile::FLOOR_TILE_ID,
                         },
                     );
                     map.set_game_tile(
-                        left_of(vertical(y)),
+                        left_of(center(y)),
                         GameTile {
                             root_tile: tile::WALL_TILE_ID,
                         },
                     );
                     map.set_game_tile(
-                        right_of(vertical(y)),
+                        right_of(center(y)),
                         GameTile {
                             root_tile: tile::WALL_TILE_ID,
                         },

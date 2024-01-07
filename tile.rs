@@ -16,7 +16,7 @@ pub const TILE_NOT_FOUND: TileID = TileID { index: 4 };
 
 // GameTile gathers IDs for assets and objects to be referenced in the game map.
 // Does not reference units or creatures.
-#[derive(Default, Serialize, Deserialize, Clone)]
+#[derive(Default, Serialize, Deserialize, Clone, Debug)]
 pub struct GameTile {
     pub root_tile: TileID,
     // room for containers and stuff here
