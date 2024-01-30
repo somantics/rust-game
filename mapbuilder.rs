@@ -52,11 +52,11 @@ pub struct MapBuilder {
 
 impl MapBuilder {
     pub fn generate_new(size_x: u32, size_y: u32) -> GameMap {
-        let bsp_tree = MapBuilder::binary_space_partitioning(size_x, size_y, 4);
-        let graph = MapBuilder::make_rooms_from_bsp(&bsp_tree);
+        let graph = MapBuilder::binary_space_partitioning(size_x, size_y, 4);
+        let graph = MapBuilder::make_rooms_from_bsp(&graph);
         let graph = MapBuilder::prune_small_rooms(&graph, 5);
         let graph = MapBuilder::make_connected_graph(&graph, 3);
-        let graph = MapBuilder::prune_edges(&graph, 4);
+        let graph = MapBuilder::prune_edges(&graph, 3);
 
         MapBuilder::draw_rooms_to_map(&graph, size_x, size_y)
     }
