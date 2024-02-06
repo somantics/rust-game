@@ -1,8 +1,8 @@
 use std::collections::HashSet;
 
+use petgraph::algo;
 use petgraph::graph::{Graph, NodeIndex};
 use petgraph::visit::IntoNodeReferences;
-use petgraph::algo;
 
 use crate::map::Euclidian;
 use crate::tile::{self, WALL_TILE_ID};
@@ -56,7 +56,7 @@ impl MapBuilder {
         let graph = MapBuilder::make_rooms_from_bsp(&graph);
         let graph = MapBuilder::prune_small_rooms(&graph, 5);
         let graph = MapBuilder::make_connected_graph(&graph, 3);
-        let graph = MapBuilder::prune_edges(&graph, 3);
+        let graph = MapBuilder::prune_edges(&graph, 4);
 
         MapBuilder::draw_rooms_to_map(&graph, size_x, size_y)
     }
@@ -66,7 +66,7 @@ impl MapBuilder {
         size_y: u32,
         max_depth: usize,
     ) -> Graph<BoxExtends, (), petgraph::Undirected> {
-        // Recursive algorithm for generating a binary space partitioning on BoxExtends. 
+        // Recursive algorithm for generating a binary space partitioning on BoxExtends.
         // Allows overlapping walls.
         let mut graph = Graph::<BoxExtends, (), petgraph::Undirected>::new_undirected();
         let map_box = BoxExtends {
@@ -178,10 +178,10 @@ impl MapBuilder {
                         .any(|collision| area.overlaps(collision))
                 })
                 .filter(|(index, _)| !closed.contains(index));
-            
+
             // add hits to opened list
             opened.extend(neighbors.clone());
-            
+
             // make new edges
             new_graph.extend_with_edges(neighbors.map(|(index, _)| (current_node, index)));
         }
@@ -236,9 +236,9 @@ impl MapBuilder {
             let edge_candidate = pruned_graph
                 .find_edge(room, best_connected_neighbor)
                 .unwrap();
-            
+
             pruned_graph.remove_edge(edge_candidate);
-            
+
             // Do not prune if connectivity is compromised.
             if algo::connected_components(&pruned_graph) != 1 {
                 pruned_graph.add_edge(room, best_connected_neighbor, ());
@@ -282,10 +282,7 @@ impl MapBuilder {
         map
     }
 
-    fn draw_room(
-        room_box: BoxExtends,
-        map: &mut GameMap,
-    ) {
+    fn draw_room(room_box: BoxExtends, map: &mut GameMap) {
         let (left, top) = (room_box.top_left.x, room_box.top_left.y);
         let (right, bottom) = (room_box.bottom_right.x, room_box.bottom_right.y);
 
@@ -376,7 +373,6 @@ impl MapBuilder {
     }
 
     fn draw_vertical_corridor(start: Coordinate, end: Coordinate, map: &mut GameMap) {
-
         let center = |y| Coordinate { x: start.x, y: y };
         let left_of = |coord: Coordinate| Coordinate {
             x: coord.x - 1,

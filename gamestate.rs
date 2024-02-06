@@ -1,82 +1,132 @@
-use crate::map::{Coordinate, GameMap, GameUnit};
+use std::mem::discriminant;
+use std::{collections::HashMap, vec};
 
-// Authoritative and only mutable state in the game logic (outside of frontend).
+use crate::{
+    component::ComponentType as Component,
+    map::{Coordinate, GameMap},
+};
+
 pub struct GameState {
     current_level: GameMap,
-    creature_list: Vec<(GameUnit, Coordinate)>,
-    player_unit: GameUnit,
-    player_position: Coordinate,
+    current_entities: HashMap<usize, Vec<Component>>,
 }
 
 impl GameState {
     pub fn create_new(level: GameMap, start: Coordinate) -> GameState {
-        GameState {
+        let mut game = GameState {
             current_level: level,
-            creature_list: Vec::<(GameUnit, Coordinate)>::new(),
-            player_unit: GameUnit::default(),
-            player_position: start,
-        }
+            current_entities: HashMap::<usize, Vec<Component>>::default(),
+        };
+        game.create_unit(
+            0,
+            vec![
+                Component::Player,
+                Component::Image(3),
+                Component::Position(start),
+            ],
+        );
+        game.create_unit(
+            1,
+            vec![
+                Component::Image(6),
+                Component::Position(Coordinate { x: 7, y: 7 }),
+            ],
+        );
+
+        game.create_unit(
+            15,
+            vec![
+                Component::Image(6),
+                Component::Position(Coordinate { x: 12, y: 9 }),
+            ],
+        );
+        game
     }
 
     pub fn get_image_ids_for_map(&self) -> Vec<Vec<i32>> {
         // Collects everything on the map that needs to be drawn.
         let mut tile_images = self.current_level.get_tile_image_ids();
-        self.add_units_to_draw(&mut tile_images);
+        self.add_entity_images(&mut tile_images);
         tile_images
     }
 
-    pub fn attempt_move_to(&mut self, x: i32, y: i32) {
-        let coord = Coordinate { x: x, y: y };
+    fn add_entity_images(&self, image_data: &mut Vec<Vec<i32>>) {
+        let requirements = vec![
+            Component::Image(i32::default()),
+            Component::Position(Coordinate::default()),
+        ];
+        let image_entities = self.get_entities_with(requirements);
 
-        self.move_player_to(coord);
-    }
-
-    pub fn attempt_move_direction(&mut self, delta_x: i32, delta_y: i32) {
-        let coord = Coordinate {
-            x: self.player_position.x + delta_x,
-            y: self.player_position.y + delta_y,
-        };
-
-        self.move_player_to(coord);
-    }
-
-    fn move_player_to(&mut self, coord: Coordinate) {
-        if self.current_level.is_tile_empty(coord) && self.no_creature_at(coord) {
-            self.player_position = coord;
+        for (_, data) in image_entities {
+            match data.as_slice() {
+                [Component::Image(im_id), Component::Position(coord)] => {
+                    let flat_position = self.current_level.coordinate_to_index(*coord);
+                    image_data[flat_position].push(*im_id);
+                }
+                _ => {}
+            }
         }
     }
 
-    fn no_creature_at(&self, coord: Coordinate) -> bool {
-        let overlapping_creatures: Vec<&(GameUnit, Coordinate)> = self
-            .creature_list
+    fn create_unit(&mut self, id: usize, components: Vec<Component>) {
+        self.current_entities.insert(id, components);
+    }
+
+    fn get_entities_with(&self, components: Vec<Component>) -> Vec<(usize, Vec<&Component>)> {
+        let matched_indexes: Vec<(usize, Vec<&Component>)> = self
+            .current_entities
             .iter()
-            .filter(|(_, pos)| coord == *pos)
+            .filter_map(|(&index, data)| {
+                GameState::get_components((index, data), components.to_owned())
+            })
             .collect();
 
-        overlapping_creatures.is_empty()
+        matched_indexes
     }
 
-    fn add_units_to_draw(&self, tile_image_ids: &mut Vec<Vec<i32>>) {
-        // Puts creature image ids on top of tile ids in data to pass to frontend.
+    fn get_components(
+        entity: (usize, &Vec<Component>),
+        requirements: Vec<Component>,
+    ) -> Option<(usize, Vec<&Component>)> {
+        let (index, components) = entity;
+        let matches: Vec<&Component> = components
+            .iter()
+            .filter(|&elem| {
+                requirements
+                    .to_owned()
+                    .iter()
+                    .any(|req| discriminant(elem) == discriminant(req))
+            })
+            .map(|elem| elem)
+            .collect();
 
-        // convert coordinate to location index
-        let creatures_by_index = self.creature_list.iter().map(|(unit, pos)| {
-            let index = ((pos.x + pos.y) as u32 * self.current_level.width) as usize;
-            (unit, index)
-        });
+        if GameState::has_components(&matches, requirements) {
+            Some((index, matches))
+        } else {
+            None
+        }
+    }
 
-        // add creatures using index
-        for (unit, index) in creatures_by_index {
-            let image_id = unit.image_id as i32;
-            tile_image_ids[index].push(image_id);
+    fn has_components(entity: &Vec<&Component>, requirements: Vec<Component>) -> bool {
+        let mut requirements = requirements;
+
+        for component in entity {
+            // do we fullfill a requirement, if so where?
+            let index = requirements
+                .iter()
+                .position(|requirement| discriminant(requirement) == discriminant(component));
+
+            // Requirement is fulfilled, no need to check any further
+            if let Some(i) = index {
+                requirements.swap_remove(i);
+            }
+
+            // No more unfulfilled requirements
+            if requirements.is_empty() {
+                break;
+            }
         }
 
-        // same for player
-        let player_pos = self.player_position;
-        let player_pos_index =
-            (player_pos.x + player_pos.y * self.current_level.width as i32) as usize;
-
-        let player_image = self.player_unit.image_id as i32;
-        tile_image_ids[player_pos_index].push(player_image);
+        requirements.is_empty()
     }
 }

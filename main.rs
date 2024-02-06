@@ -12,6 +12,7 @@ use {
 };
 
 mod boxextends;
+mod component;
 mod gamestate;
 mod map;
 mod mapbuilder;
@@ -26,7 +27,7 @@ const STARTING_POSITION: Coordinate = Coordinate { x: 5, y: 6 };
 
 fn main() {
     let game_map = MapBuilder::generate_new(GRID_WIDTH, GRID_HEIGHT);
-    let game_state = GameState::create_new(game_map, STARTING_POSITION);
+    let mut game_state = GameState::create_new(game_map, STARTING_POSITION);
 
     let main_window = initialize_main_window();
     update_tile_map(&game_state, &main_window);
@@ -47,10 +48,10 @@ fn set_up_input(mut game: GameState, window: &MainWindow) {
     let weak_window = window.as_weak();
     window.on_received_input(move |action, x, y| {
         // This is the game loop
-        match action {
+        /* match action {
             InputCommand::Position => game.attempt_move_to(x, y),
             InputCommand::Direction => game.attempt_move_direction(x, y),
-        }
+        } */
 
         // Equivalent to draw.
         update_tile_map(&game, &weak_window.unwrap());

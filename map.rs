@@ -57,6 +57,10 @@ impl GameMap {
         GameMap { map, width, height }
     }
 
+    pub fn coordinate_to_index(&self, coord: Coordinate) -> usize {
+        (coord.y * self.width as i32 + coord.x) as usize
+    }
+
     pub fn to_serializable(&self) -> GameMapSerializable {
         let serializable_kv_pairs: Vec<(Coordinate, GameTile)> = self
             .map
@@ -92,27 +96,15 @@ pub struct GameMapSerializable {
     width: u32,
     height: u32,
 }
-#[derive(Serialize, Deserialize, Clone, Debug)]
-pub struct GameUnit {
-    pub image_id: u32,
-    pub position: Coordinate,
-}
-
-impl Default for GameUnit {
-    fn default() -> Self {
-        GameUnit {
-            image_id: 3,
-            position: Coordinate::default(),
-        }
-    }
-}
 
 #[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default)]
 pub struct ImageId {
     index: i32, // for compatibility with slint
 }
 
-#[derive(Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default, Ord, PartialOrd)]
+#[derive(
+    Hash, PartialEq, Eq, Serialize, Deserialize, Clone, Copy, Debug, Default, Ord, PartialOrd,
+)]
 pub struct Coordinate {
     pub x: i32,
     pub y: i32,
