@@ -1,3 +1,5 @@
+use std::mem::discriminant;
+
 use crate::map::Coordinate;
 
 // Defines which types of components exist. Components without data represent tags.
@@ -63,16 +65,69 @@ pub trait Diffable {
     fn apply_diff(&mut self, other: &Self);
 }
 
-pub struct TestSystem;
+pub struct TestSystem {
+    requirements: Vec<ComponentType>,
+}
+
+impl Default for TestSystem {
+    fn default() -> Self {
+        TestSystem { requirements: vec![
+            ComponentType::Player,
+            ComponentType::Health(Health::default())
+            ] }
+    }
+}
+
+impl TestSystem {
+    fn process_single(
+        entity: &(usize, Vec<&ComponentType>),
+    ) -> Option<(usize, Vec<ComponentType>)> {
+        let mut output = ComponentType::Health(Health::default());
+        if let Some(ComponentType::Health(data)) = get_component_from_entity(output.clone(), entity)
+        {
+            if data.current >= 0 {
+                output = ComponentType::Health(Health {
+                    current: -1,
+                    max: 0,
+                });
+
+                println!("Dealing damage to player.");
+                Some((entity.0, vec![output]))
+            } else {
+                println!("Not dealing damage to player.");
+                None
+            }
+        } else {
+            None
+        }
+    }
+}
 
 impl System for TestSystem {
-    fn get_component_requirements(&self) -> &Vec<ComponentType> {
-        todo!()
+    fn get_component_requirements(&self) -> Vec<ComponentType> {
+        vec![
+            ComponentType::Player,
+            ComponentType::Health(Health::default()),
+        ]
     }
 
     fn run(&self, entities: Vec<(usize, Vec<&ComponentType>)>) -> Vec<(usize, Vec<ComponentType>)> {
-        todo!()
+        entities
+            .iter()
+            .filter_map(|entity| Self::process_single(entity))
+            .collect()
     }
+}
+
+fn get_component_from_entity<'a>(
+    comp_type: ComponentType,
+    entity: &(usize, Vec<&'a ComponentType>),
+) -> Option<&'a ComponentType> {
+    let (_, comps) = entity;
+    comps
+        .iter()
+        .find(|&&component| discriminant(component) == discriminant(&comp_type))
+        .map(|&val| val)
 }
 
 pub trait System {
@@ -82,6 +137,6 @@ pub trait System {
         entity filter based on components
             the filtering is done in the entity/component manager
      */
-    fn get_component_requirements(&self) -> &Vec<ComponentType>;
+    fn get_component_requirements(&self) -> Vec<ComponentType>;
     fn run(&self, entities: Vec<(usize, Vec<&ComponentType>)>) -> Vec<(usize, Vec<ComponentType>)>;
 }

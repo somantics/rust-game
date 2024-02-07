@@ -48,10 +48,9 @@ fn set_up_input(mut game: GameState, window: &MainWindow) {
     let weak_window = window.as_weak();
     window.on_received_input(move |action, x, y| {
         // This is the game loop
-        /* match action {
-            InputCommand::Position => game.attempt_move_to(x, y),
-            InputCommand::Direction => game.attempt_move_direction(x, y),
-        } */
+        match action {
+            _ => game.run_turn_systems(),
+        }
 
         // Equivalent to draw.
         update_tile_map(&game, &weak_window.unwrap());

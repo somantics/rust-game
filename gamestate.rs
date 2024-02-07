@@ -1,7 +1,7 @@
 use std::mem::discriminant;
 use std::{collections::HashMap, vec};
 
-use crate::component::{Diffable, System, TestSystem};
+use crate::component::{Diffable, Health, System, TestSystem};
 use crate::{
     component::ComponentType as Component,
     map::{Coordinate, GameMap},
@@ -20,12 +20,14 @@ impl GameState {
             current_entities: HashMap::<usize, Vec<Component>>::default(),
             turn_systems: Vec::<Box<dyn System>>::default(),
         };
+        game.turn_systems.push(Box::new(TestSystem::default()));
         game.create_unit(
             0,
             vec![
                 Component::Player,
                 Component::Image(3),
                 Component::Position(start),
+                Component::Health(Health { current: 15, max: 15 }),
             ],
         );
         game.create_unit(
@@ -88,7 +90,7 @@ impl GameState {
 
     fn run_system(&mut self, system: &Box<dyn System>) -> Vec<(usize, Vec<Component>)> {
         let requirements = system.get_component_requirements();
-        let matches = self.get_entities_with(requirements);
+        let matches = self.get_entities_with(&requirements);
         system.run(matches)
     }
 
