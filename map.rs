@@ -1,7 +1,10 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::{component::Diffable, tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY}};
+use crate::{
+    component::Diffable,
+    tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY},
+};
 
 // Stores all game tiles for a particular map. This contains information about
 // visual tiles to use, passability, and in the future interactable objects
@@ -120,7 +123,7 @@ impl Coordinate {
 }
 
 impl Diffable for Coordinate {
-    fn apply_diff(&mut self, other: Self) {
+    fn apply_diff(&mut self, other: &Self) {
         self.x += other.x;
         self.y += other.y;
     }

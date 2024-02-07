@@ -11,12 +11,12 @@ pub enum ComponentType {
 }
 // make macro for this later
 impl Diffable for ComponentType {
-    fn apply_diff(&mut self, other: Self) {
+    fn apply_diff(&mut self, other: &Self) {
         match (self, other) {
             (Self::Health(data), Self::Health(other_data)) => data.apply_diff(other_data),
             (Self::Movement(data), Self::Movement(other_data)) => data.apply_diff(other_data),
             (Self::Position(data), Self::Position(other_data)) => data.apply_diff(other_data),
-            _ => {},
+            _ => {}
         }
     }
 }
@@ -28,7 +28,7 @@ pub struct Health {
 }
 
 impl Diffable for Health {
-    fn apply_diff(&mut self, other: Self) {
+    fn apply_diff(&mut self, other: &Self) {
         self.current += other.current;
         self.max += other.max;
     }
@@ -44,19 +44,34 @@ impl Health {
     }
 }
 
-
 #[derive(Debug, Clone, Default)]
 pub struct Movement {
     neighbors: Vec<Coordinate>,
     steps_left: isize,
-    steps_max: isize
+    steps_max: isize,
 }
 
 impl Diffable for Movement {
     // neighbor directions currently not diffable
-    fn apply_diff(&mut self, other: Self) {
+    fn apply_diff(&mut self, other: &Self) {
         self.steps_left += other.steps_left;
         self.steps_max += other.steps_max;
+    }
+}
+
+pub trait Diffable {
+    fn apply_diff(&mut self, other: &Self);
+}
+
+pub struct TestSystem;
+
+impl System for TestSystem {
+    fn get_component_requirements(&self) -> &Vec<ComponentType> {
+        todo!()
+    }
+
+    fn run(&self, entities: Vec<(usize, Vec<&ComponentType>)>) -> Vec<(usize, Vec<ComponentType>)> {
+        todo!()
     }
 }
 
@@ -69,8 +84,4 @@ pub trait System {
      */
     fn get_component_requirements(&self) -> &Vec<ComponentType>;
     fn run(&self, entities: Vec<(usize, Vec<&ComponentType>)>) -> Vec<(usize, Vec<ComponentType>)>;
-}
-
-pub trait Diffable {
-    fn apply_diff(&mut self, other: Self);
 }

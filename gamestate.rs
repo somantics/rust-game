@@ -1,6 +1,7 @@
 use std::mem::discriminant;
 use std::{collections::HashMap, vec};
 
+use crate::component::{Diffable, System, TestSystem};
 use crate::{
     component::ComponentType as Component,
     map::{Coordinate, GameMap},
@@ -9,6 +10,7 @@ use crate::{
 pub struct GameState {
     current_level: GameMap,
     current_entities: HashMap<usize, Vec<Component>>,
+    turn_systems: Vec<Box<dyn System>>,
 }
 
 impl GameState {
@@ -16,6 +18,7 @@ impl GameState {
         let mut game = GameState {
             current_level: level,
             current_entities: HashMap::<usize, Vec<Component>>::default(),
+            turn_systems: Vec::<Box<dyn System>>::default(),
         };
         game.create_unit(
             0,
@@ -72,13 +75,45 @@ impl GameState {
         self.current_entities.insert(id, components);
     }
 
+    pub fn run_turn_systems(&mut self) {
+        let system_list =
+            std::mem::replace(&mut self.turn_systems, Vec::<Box<dyn System>>::default());
+
+        for system in system_list.iter() {
+            let diffs = self.run_system(&system);
+            self.apply_diffs(diffs);
+        }
+        self.turn_systems = system_list;
+    }
+
+    fn run_system(&mut self, system: &Box<dyn System>) -> Vec<(usize, Vec<Component>)> {
+        let requirements = system.get_component_requirements();
+        let matches = self.get_entities_with(requirements);
+        system.run(matches)
+    }
+
+    fn apply_diffs(&mut self, diffs: Vec<(usize, Vec<Component>)>) {
+        for (index, changes) in diffs {
+            if let Some(mut data) = self.current_entities.get_mut(&index) {
+                for mut component in data {
+                    let diff = changes
+                        .iter()
+                        .find(|&change| discriminant(component) == discriminant(change));
+
+                    match diff {
+                        Some(change) => component.apply_diff(change),
+                        None => {}
+                    };
+                }
+            }
+        }
+    }
+
     fn get_entities_with(&self, components: &Vec<Component>) -> Vec<(usize, Vec<&Component>)> {
         let matched_entities: Vec<(usize, Vec<&Component>)> = self
             .current_entities
             .iter()
-            .filter_map(|(&index, data)| {
-                GameState::get_components((index, data), components)
-            })
+            .filter_map(|(&index, data)| GameState::get_components((index, data), components))
             .collect();
 
         matched_entities
