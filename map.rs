@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-use crate::tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY};
+use crate::{component::Diffable, tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY}};
 
 // Stores all game tiles for a particular map. This contains information about
 // visual tiles to use, passability, and in the future interactable objects
@@ -116,6 +116,13 @@ impl Coordinate {
         let delta_y = self.y - other.position().x;
 
         ((delta_x as f32).powf(2.0) + (delta_y as f32).powf(2.0)).sqrt()
+    }
+}
+
+impl Diffable for Coordinate {
+    fn apply_diff(&mut self, other: Self) {
+        self.x += other.x;
+        self.y += other.y;
     }
 }
 

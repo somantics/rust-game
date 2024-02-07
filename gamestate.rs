@@ -55,7 +55,7 @@ impl GameState {
             Component::Image(i32::default()),
             Component::Position(Coordinate::default()),
         ];
-        let image_entities = self.get_entities_with(requirements);
+        let image_entities = self.get_entities_with(&requirements);
 
         for (_, data) in image_entities {
             match data.as_slice() {
@@ -72,22 +72,22 @@ impl GameState {
         self.current_entities.insert(id, components);
     }
 
-    fn get_entities_with(&self, components: Vec<Component>) -> Vec<(usize, Vec<&Component>)> {
-        let matched_indexes: Vec<(usize, Vec<&Component>)> = self
+    fn get_entities_with(&self, components: &Vec<Component>) -> Vec<(usize, Vec<&Component>)> {
+        let matched_entities: Vec<(usize, Vec<&Component>)> = self
             .current_entities
             .iter()
             .filter_map(|(&index, data)| {
-                GameState::get_components((index, data), components.to_owned())
+                GameState::get_components((index, data), components)
             })
             .collect();
 
-        matched_indexes
+        matched_entities
     }
 
-    fn get_components(
-        entity: (usize, &Vec<Component>),
-        requirements: Vec<Component>,
-    ) -> Option<(usize, Vec<&Component>)> {
+    fn get_components<'a>(
+        entity: (usize, &'a Vec<Component>),
+        requirements: &Vec<Component>,
+    ) -> Option<(usize, Vec<&'a Component>)> {
         let (index, components) = entity;
         let matches: Vec<&Component> = components
             .iter()
@@ -107,8 +107,8 @@ impl GameState {
         }
     }
 
-    fn has_components(entity: &Vec<&Component>, requirements: Vec<Component>) -> bool {
-        let mut requirements = requirements;
+    fn has_components(entity: &Vec<&Component>, requirements: &Vec<Component>) -> bool {
+        let mut requirements = requirements.to_owned();
 
         for component in entity {
             // do we fullfill a requirement, if so where?
