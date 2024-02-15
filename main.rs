@@ -12,10 +12,12 @@ use {
 };
 
 mod boxextends;
+mod combat;
 mod component;
 mod gamestate;
 mod map;
 mod mapbuilder;
+mod system;
 mod tile;
 
 slint::include_modules!();
@@ -49,9 +51,12 @@ fn set_up_input(mut game: GameState, window: &MainWindow) {
     window.on_received_input(move |action, x, y| {
         // This is the game loop
         match action {
-            _ => game.run_turn_systems(),
+            InputCommand::Direction => {
+                game.step_command(Coordinate { x, y });
+            }
+            _ => {}
         }
-
+        game.run_turn_systems();
         // Equivalent to draw.
         update_tile_map(&game, &weak_window.unwrap());
     });

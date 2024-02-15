@@ -7,6 +7,7 @@ pub static TILE_REGISTRY: Map<u32, &'static RootTile> = phf_map!(
   2u32 => &RootTile {image_id: 2, passable: false},
   3u32 => &RootTile {image_id: 5, passable: true},
   4u32 => &RootTile {image_id: 4, passable: false},
+  5u32 => &RootTile {image_id: 6, passable: false},
 );
 
 pub const FLOOR_TILE_ID: TileID = TileID { index: 0 };

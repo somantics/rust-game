@@ -39,7 +39,7 @@ impl GameMap {
             .collect()
     }
 
-    pub fn is_tile_empty(&self, coord: Coordinate) -> bool {
+    pub fn is_tile_passable(&self, coord: Coordinate) -> bool {
         match self.map.get(&coord) {
             Some(tile) => tile.is_empty(),
             None => false,
