@@ -2,7 +2,7 @@ use std::{cell::RefCell, collections::HashMap, mem::discriminant, rc::Rc, vec};
 
 use crate::{
     combat::{Attack, Combat, Health},
-    component::{ComponentType as Component, Diffable, Inventory, TurnTaker},
+    component::{ComponentType as Component, Diffable, Interact, Inventory, TurnTaker},
     map::{Coordinate, GameMap},
     system::{MonsterTurns, System, UnitCull},
 };
@@ -93,6 +93,16 @@ impl GameState {
                 Component::Position(Coordinate { x: 12, y: 12 }),
                 Component::Inventory(chest_inventory.clone()),
                 Component::Bump(chest_inventory),
+                Component::Collision(true),
+            ],
+        );
+        let interaction = Rc::new(RefCell::new(Interact::new_door()));
+        game.create_unit(
+            4,
+            vec![
+                Component::Image(9),
+                Component::Position(Coordinate { x: 5, y: 5 }),
+                Component::Bump(interaction),
                 Component::Collision(true),
             ],
         );

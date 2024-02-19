@@ -3,8 +3,10 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::vec;
 
+use serde::de::IgnoredAny;
+
 use crate::combat::{Combat, Health};
-use crate::gamestate::{get_position_from, has_components, Diff, Match, GameState};
+use crate::gamestate::{get_position_from, has_components, Diff, GameState, Match};
 use crate::map::Coordinate;
 
 pub trait Diffable {
@@ -25,6 +27,7 @@ pub enum ComponentType {
     Inventory(Rc<RefCell<Inventory>>),
     Turn(TurnTaker),
     Collision(bool),
+    Interaction(Interact),
 }
 // make macro for this later
 impl Diffable for ComponentType {
@@ -43,6 +46,7 @@ impl Diffable for ComponentType {
             }
             // Overwrite types
             (Self::Image(data), Self::Image(other_data)) => *data = *other_data,
+            (Self::Collision(data), Self::Collision(other_data)) => *data = *other_data,
             (Self::Bump(data), Self::Bump(other_data)) => data.clone_from(other_data),
             _ => {}
         }
@@ -60,10 +64,10 @@ impl Movement {
     fn new() -> Self {
         Self {
             neighbors: vec![
-                Coordinate{x: 1, y: 0},
-                Coordinate{x: -1, y: 0},
-                Coordinate{x: 0, y: 1},
-                Coordinate{x: 0, y: -1},
+                Coordinate { x: 1, y: 0 },
+                Coordinate { x: -1, y: 0 },
+                Coordinate { x: 0, y: 1 },
+                Coordinate { x: 0, y: -1 },
             ],
             steps_left: 0,
             steps_max: 0,
@@ -81,6 +85,37 @@ impl Diffable for Movement {
 
 pub trait Response: Debug {
     fn process(&self, own_id: usize, other_id: usize, other: Match) -> Vec<Diff>;
+}
+
+#[derive(Debug, Clone)]
+pub struct Interact {
+    pub response: Option<fn(&Interact, own_id: usize, other_id: usize, other: Match) -> Vec<Diff>>,
+}
+
+impl Interact {
+    pub fn new_door() -> Self {
+        Interact { response: Some(open_door) }
+    }
+}
+
+impl Response for Interact {
+    fn process(&self, own_id: usize, other_id: usize, other: Match) -> Vec<Diff> {
+        if let Some(response_func) = self.response {
+            response_func(self, own_id, other_id, other)
+        } else {
+            vec![]
+        }
+    }
+}
+
+pub fn open_door(owner: &Interact, own_id: usize, other_id: usize, other: Match) -> Vec<Diff> {
+    vec![
+        // set image to open door and turn off collision (which will turn off bumps)
+        (
+            own_id,
+            vec![ComponentType::Image(10), ComponentType::Collision(false)],
+        ),
+    ]
 }
 
 #[derive(Debug, Clone)]
@@ -132,7 +167,12 @@ impl Response for Inventory {
     }
 }
 
-pub fn award_inventory(owner: &Inventory, own_id: usize, other_id: usize, other: Match) -> Vec<Diff> {
+pub fn award_inventory(
+    owner: &Inventory,
+    own_id: usize,
+    other_id: usize,
+    other: Match,
+) -> Vec<Diff> {
     let requirements = vec![ComponentType::Inventory(Rc::new(RefCell::new(
         Inventory::default(),
     )))];
@@ -148,15 +188,20 @@ pub fn award_inventory(owner: &Inventory, own_id: usize, other_id: usize, other:
 
         println!("Giving player {:?}", award_inventory.coins);
         vec![
-            (own_id, vec![
-                ComponentType::Inventory(Rc::new(RefCell::new(empty_inventory))),
-                ComponentType::Image(8),
-            ]),
-            (other_id, vec![
-                ComponentType::Inventory(Rc::new(RefCell::new(award_inventory))),
-            ])
+            (
+                own_id,
+                vec![
+                    ComponentType::Inventory(Rc::new(RefCell::new(empty_inventory))),
+                    ComponentType::Image(8),
+                ],
+            ),
+            (
+                other_id,
+                vec![ComponentType::Inventory(Rc::new(RefCell::new(
+                    award_inventory,
+                )))],
+            ),
         ]
-        
     } else {
         println!("Other can't accept my inventory.");
         vec![]
@@ -180,7 +225,10 @@ pub struct TurnTaker {
 
 impl TurnTaker {
     pub fn new() -> Self {
-        Self { movement: Movement::new(), ..Default::default() }
+        Self {
+            movement: Movement::new(),
+            ..Default::default()
+        }
     }
     pub fn process_turn(&self, game: &GameState, own_id: usize) -> Vec<Diff> {
         let (pl_id, pl_entity) = game.get_player();
