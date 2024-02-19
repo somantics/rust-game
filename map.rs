@@ -1,5 +1,6 @@
+use rand_distr::num_traits::Pow;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::{collections::HashMap, ops::Add};
 
 use crate::{
     component::Diffable,
@@ -116,9 +117,9 @@ pub struct Coordinate {
 impl Coordinate {
     pub fn distance(&self, other: Coordinate) -> f32 {
         let delta_x = self.x - other.position().x;
-        let delta_y = self.y - other.position().x;
+        let delta_y = self.y - other.position().y;
 
-        ((delta_x as f32).powf(2.0) + (delta_y as f32).powf(2.0)).sqrt()
+        (delta_x.pow(2) + delta_y.abs().pow(2)) as f32
     }
 }
 
@@ -139,6 +140,17 @@ impl Euclidian for Coordinate {
 
     fn position(&self) -> Coordinate {
         *self
+    }
+}
+
+impl Add for Coordinate {
+    type Output = Coordinate;
+
+    fn add(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x + rhs.x,
+            y: self.y + rhs.y,
+        }
     }
 }
 
