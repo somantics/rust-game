@@ -1,3 +1,4 @@
+import { VerticalBox, HorizontalBox } from "std-widgets.slint";
 global ImageIds {
   in-out property <[image]> images_by_index: [
       @image-url("icons/tile008.png"),
@@ -15,7 +16,7 @@ global ImageIds {
 }
 
 export enum InputCommand { 
-  Direction, Position,
+  Direction, Position, Wait,
  } 
 
 struct TileGraphics {
@@ -50,17 +51,19 @@ component MapTile inherits Rectangle {
   }
 }
 
-export component MainWindow inherits Window {
-  width: grid-width * tile-size;
-  height: grid-height * tile-size;
+component GameMap inherits Rectangle {
+  in property <int> grid_width;
+  in property <int> grid_height;
+  in property <length> tile-size;
+
+  in property <[TileGraphics]> memory_tiles;
 
   callback received_input(InputCommand, int, int);
 
-  in property <length> tile_size;
-  in property <int> grid_width;
-  in property <int> grid_height;
-
-  in property <[TileGraphics]> memory_tiles;
+  x: 0;
+  y: 0;
+  height: grid_height * tile-size;
+  width: grid_width * tile-size;
 
   for tile[i] in memory_tiles : MapTile {
     grid_x: mod(i, grid_width);
@@ -71,6 +74,60 @@ export component MainWindow inherits Window {
 
     clicked => {
       root.received-input(InputCommand.Position, self.grid_x, self.grid_y);
+    }
+  }
+}
+
+component TextLog inherits Rectangle {
+
+  background: #B8CD55;
+  border-color: #69903B;
+
+  border-width: 4px;
+
+  text_box := Text {
+    x: parent.border-width + 2px; 
+    y: parent.border-width + 2px;
+    height: parent.height - (parent.border-width + 2px) * 2;
+    horizontal-alignment: left;
+    vertical-alignment: top;
+  }
+
+  public function display_message(msg: string) {
+    text-box.text = msg + "\n" + text-box.text;
+  }
+}
+
+export component MainWindow inherits Window {
+  background: #204631;
+
+  width: grid-width * tile-size * 1.25;
+  height: grid-height * tile-size * 1.25;
+
+  callback received_input(InputCommand, int, int);
+
+  in property <length> tile_size;
+  in property <int> grid_width;
+  in property <int> grid_height;
+
+  in property <[TileGraphics]> memory_tiles;
+
+  HorizontalBox {
+    VerticalBox {
+      padding: 0;
+      GameMap { 
+        tile-size: root.tile_size;
+        grid_height: root.grid_height;
+        grid_width: root.grid_width;
+    
+        memory_tiles: root.memory_tiles;
+    
+        received_input(command, x, y,) => {
+          root.received_input(command, x, y);
+        }
+      }
+    
+      message_log := TextLog {}
     }
   }
 
@@ -91,8 +148,15 @@ export component MainWindow inherits Window {
       } else if (event.text == "d") {
 
         received-input(InputCommand.Direction, 1, 0);
+      } else if (event.text == " ") {
+
+        received-input(InputCommand.Wait, 0, 0);
       }
       accept
     }
+  }
+
+  public function display_message(msg: string) {
+    message-log.display_message(msg);
   }
 }

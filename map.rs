@@ -1,9 +1,13 @@
 use rand_distr::num_traits::Pow;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, ops::Add};
+use std::{
+    cmp::Reverse, collections::{hash_set, BinaryHeap, HashMap, HashSet}, ops::{Add, Sub}
+};
+use priority_queue::PriorityQueue;
 
 use crate::{
     component::Diffable,
+    gamestate::GameState,
     tile::{GameTile, TILE_NOT_FOUND, TILE_REGISTRY},
 };
 
@@ -119,7 +123,7 @@ impl Coordinate {
         let delta_x = self.x - other.position().x;
         let delta_y = self.y - other.position().y;
 
-        (delta_x.pow(2) + delta_y.abs().pow(2)) as f32
+        ((delta_x.pow(2) + delta_y.abs().pow(2)) as f32).sqrt()
     }
 }
 
@@ -154,10 +158,133 @@ impl Add for Coordinate {
     }
 }
 
+impl Sub for Coordinate {
+    type Output = Coordinate;
+
+    fn sub(self, rhs: Self) -> Self::Output {
+        Self {
+            x: self.x - rhs.x,
+            y: self.y - rhs.y,
+        }
+    }
+}
+
 pub trait Euclidian {
     fn distance_to<T>(&self, other: T) -> f32
     where
         T: Euclidian;
 
     fn position(&self) -> Coordinate;
+}
+
+#[derive(Debug, Hash, Clone, Copy)]
+struct NodeData {
+    distance: usize,
+    parent: Option<Coordinate>,
+}
+
+impl NodeData {
+    fn origin() -> Self {
+        NodeData {
+            distance: 0,
+            parent: None,
+        }
+    }
+}
+
+impl Ord for NodeData {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.distance.cmp(&other.distance)
+    }
+}
+
+impl PartialOrd for NodeData {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.distance.partial_cmp(&other.distance)
+    }
+}
+
+impl PartialEq for NodeData {
+    fn eq(&self, other: &Self) -> bool {
+        self.distance == other.distance
+    }
+}
+
+impl Eq for NodeData {}
+
+pub fn pathfind(origin: Coordinate, destination: Coordinate, game: &GameState) -> Option<Vec<Coordinate>> {
+    let neighbors = vec![
+        Coordinate { x: 0, y: 1 },
+        Coordinate { x: 0, y: -1 },
+        Coordinate { x: 1, y: 0 },
+        Coordinate { x: -1, y: 0 },
+    ];
+
+    let mut open = PriorityQueue::new();
+    let mut closed: HashMap<Coordinate, NodeData> = HashMap::new();
+    let mut last_node: (Coordinate, NodeData) = (origin, NodeData::origin());
+
+    open.push(origin, Reverse(NodeData::origin()));
+
+    while let Some((visited_coord, Reverse(visited_data))) = open.pop() {
+        // add visited node to closed
+        closed.insert(visited_coord, visited_data);
+        last_node = (visited_coord, visited_data);
+
+        if visited_coord == destination {
+            break;
+        }
+
+        // filter out impassable neighbors
+        let passable_neighbors = neighbors
+            .iter()
+            .map(|&dir| visited_coord + dir)
+            .filter(|&coord| game.is_tile_passable(coord) && !game.is_blocked_by_entity(coord));
+
+        for neighbor_coord in passable_neighbors {
+            // neighbor already visited
+            if closed.contains_key(&neighbor_coord) {
+                continue;
+            }
+
+            let distance_through_here = visited_data.distance + 1;
+            // neighbor in open set already
+            if let Some(Reverse(neigbor_data)) = open.get_priority(&neighbor_coord) {
+                if neigbor_data.distance > distance_through_here {
+                    open.change_priority(
+                        &neighbor_coord, 
+                        Reverse(NodeData { 
+                            distance: distance_through_here, 
+                            parent: Some(visited_coord)
+                    }));
+                }
+            // add neighbor to open set
+            } else {
+                open.push(neighbor_coord, Reverse(NodeData { 
+                    distance: distance_through_here, 
+                    parent: Some(visited_coord)
+                }));
+            }
+        }
+    }
+    // check if we have a solution
+    if last_node.0 != destination {
+        return None;
+    }
+    // do the backtracking and return sequence of move instructions
+    let mut sequence: Vec<Coordinate> = Vec::new();
+
+    while let Some(parent) = last_node.1.parent {
+        let current = last_node.0;
+        let delta = current - parent;
+        sequence.push(delta);
+
+        if parent == origin {
+            break;
+        }
+
+        last_node = (parent, *closed.get(&parent).expect("Failed to find note data."));
+    }
+
+    Some(sequence)
 }

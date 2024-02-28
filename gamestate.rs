@@ -1,10 +1,10 @@
-use std::{cell::RefCell, collections::HashMap, mem::discriminant, rc::Rc, vec};
+use std::{cell::RefCell, collections::{HashMap, VecDeque}, mem::discriminant, rc::Rc, vec};
 
 use crate::{
     combat::{Attack, Combat, Health},
     component::{ComponentType as Component, Diffable, Interact, Inventory, TurnTaker},
     map::{Coordinate, GameMap},
-    system::{MonsterTurns, System, UnitCull},
+    system::{MonsterTurns, PlayerCheck, System, UnitCull}, MessageLog,
 };
 
 pub type Entity = Vec<Component>;
@@ -27,6 +27,7 @@ impl GameState {
         };
         game.turn_systems.push(Box::new(UnitCull::default()));
         game.turn_systems.push(Box::new(MonsterTurns::default()));
+        game.turn_systems.push(Box::new(PlayerCheck::default()));
 
         let player_combat = Rc::new(RefCell::new(Combat::new(
             Health {
@@ -44,6 +45,7 @@ impl GameState {
             0,
             vec![
                 Component::Player,
+                Component::Name("Bartholomew".to_string()),
                 Component::Image(3),
                 Component::Position(start),
                 Component::Combat(player_combat.clone()),
@@ -60,6 +62,7 @@ impl GameState {
         game.create_unit(
             1,
             vec![
+                Component::Name("Doggo".to_string()),
                 Component::Image(6),
                 Component::Position(Coordinate { x: 7, y: 7 }),
                 Component::Combat(dog_combat.clone()),
@@ -76,6 +79,7 @@ impl GameState {
         game.create_unit(
             15,
             vec![
+                Component::Name("Doggo".to_string()),
                 Component::Image(6),
                 Component::Position(Coordinate { x: 12, y: 9 }),
                 Component::Combat(dog_combat.clone()),
@@ -113,7 +117,28 @@ impl GameState {
         self.current_entities.insert(id, components);
     }
 
-    pub fn step_command(&mut self, direction: Coordinate) {
+    pub fn wait_command(&mut self, log: &MessageLog) {
+        self.wait_turn(log);
+        self.run_turn_systems(log);
+    }
+
+    pub fn target_command(&mut self, position: Coordinate, log: &MessageLog) {
+        let (_, player_comps) = self.get_player();
+        if let Some(player_pos) = get_position_from(player_comps.clone()) {
+            if position == player_pos {
+                self.wait_command(log);
+            } else if position.distance(player_pos) <= 1.05 {
+                // clicked adjacent <=> wasd command
+                let direction = Coordinate {
+                    x: position.x - player_pos.x,
+                    y: position.y - player_pos.y,
+                };
+                self.step_command(direction, log);
+            }
+        }
+    }
+
+    pub fn step_command(&mut self, direction: Coordinate, log: &MessageLog) {
         let (player_id, player_comps) = self.get_player();
         if let Some(position) = get_position_from(player_comps.clone()) {
             let destination = Coordinate {
@@ -125,7 +150,7 @@ impl GameState {
                     if self.get_passable_of(target_id) {
                         self.move_player(direction)
                     } else {
-                        let diffs = self.propagate_bump_to(player_id, player_comps, target_id);
+                        let diffs = self.propagate_bump_to(player_id, player_comps, target_id, log);
                         self.apply_diffs(diffs);
                     }
                 }
@@ -138,6 +163,7 @@ impl GameState {
         } else {
             println!("Player position not found.");
         }
+        self.run_turn_systems(log);
     }
 
     pub fn get_image_ids_for_map(&self) -> Vec<Vec<i32>> {
@@ -147,12 +173,12 @@ impl GameState {
         tile_images
     }
 
-    pub fn run_turn_systems(&mut self) {
+    pub fn run_turn_systems(&mut self, log: &MessageLog) {
         let system_list =
             std::mem::replace(&mut self.turn_systems, Vec::<Box<dyn System>>::default());
 
         for system in system_list.iter() {
-            let diffs = self.run_system(&system);
+            let diffs = self.run_system(&system, log);
             self.apply_diffs(diffs);
         }
         self.turn_systems = system_list;
@@ -160,17 +186,27 @@ impl GameState {
 
     // PUBLIC FOR SYSTEMS
 
+    pub fn is_blocked_by_entity(&self, coord: Coordinate) -> bool {
+        if let Some(id) = self.get_tile_occupant_id(coord) {
+            self.get_passable_of(id)
+        } else {
+            false
+        }
+    }
+
     pub fn is_tile_passable(&self, coord: Coordinate) -> bool {
         self.current_level.is_tile_passable(coord)
     }
 
     pub fn get_passable_of(&self, id: usize) -> bool {
-        let entity = self.get_entity_of(id).expect("Entity with ID does not exist.");
+        let entity = self
+            .get_entity_of(id)
+            .expect("Entity with ID does not exist.");
         let collision = get_component_from(Component::Collision(true), entity);
         match collision {
             Some(Component::Collision(true)) => false,
             Some(Component::Collision(false)) => true,
-            _ => true
+            _ => true,
         }
     }
 
@@ -281,11 +317,11 @@ impl GameState {
         }
     }
 
-    pub fn propagate_bump_to(&self, source_id: usize,  source: Match, id: usize) -> Vec<Diff> {
+    pub fn propagate_bump_to(&self, source_id: usize, source: Match, id: usize, log: &MessageLog) -> Vec<Diff> {
         if let Some(entity) = self.get_entity_of(id) {
             let comp_type = Component::Bump(Rc::new(RefCell::new(Combat::default())));
             if let Some(Component::Bump(data)) = get_component_from(comp_type, entity.clone()) {
-                data.borrow().process(id, source_id, source)
+                data.borrow().process(id, source_id, source, log)
             } else {
                 vec![]
             }
@@ -324,10 +360,10 @@ impl GameState {
         }
     }
 
-    fn run_system(&mut self, system: &Box<dyn System>) -> Vec<Diff> {
+    fn run_system(&mut self, system: &Box<dyn System>, log: &MessageLog) -> Vec<Diff> {
         let requirements = system.get_component_requirements();
         let entities = self.get_matches_with(&requirements);
-        system.run(self, entities)
+        system.run(self, entities, log)
     }
 
     fn apply_diffs(&mut self, diffs: Vec<Diff>) {
@@ -368,6 +404,8 @@ impl GameState {
 
         matched_entities
     }
+
+    fn wait_turn(&mut self, log: &MessageLog) {}
 }
 
 // DATA OPERATIONS ON ENTITIES

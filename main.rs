@@ -1,4 +1,5 @@
-use std::fs::File;
+use std::collections::VecDeque;
+use std::{cell::RefCell, fs::File};
 use std::io::prelude::*;
 use std::path::Path;
 
@@ -46,20 +47,33 @@ fn initialize_main_window() -> MainWindow {
 }
 
 fn set_up_input(mut game: GameState, window: &MainWindow) {
+    let message_log = MessageLog::new();
     // Sets up responses to slint input callback.
     let weak_window = window.as_weak();
     window.on_received_input(move |action, x, y| {
         // This is the game loop
         match action {
             InputCommand::Direction => {
-                game.step_command(Coordinate { x, y });
+                game.step_command(Coordinate { x, y }, &message_log);
+            }
+            InputCommand::Position => {
+                game.target_command(Coordinate { x, y }, &message_log);
+            }
+            InputCommand::Wait => {
+                game.wait_command(&message_log);
             }
             _ => {}
         }
-        game.run_turn_systems();
+        display_messages(&message_log, &weak_window.unwrap());
         // Equivalent to draw.
         update_tile_map(&game, &weak_window.unwrap());
     });
+}
+
+fn display_messages(message_log: &MessageLog, window: &MainWindow) {
+    while let Some(msg) = message_log.next_message() {
+        window.invoke_display_message(msg.into());
+    }
 }
 
 fn update_tile_map(game_state: &GameState, window: &MainWindow) {
@@ -115,4 +129,25 @@ fn load_map(path: &Path) -> GameMap {
     };
 
     GameMap::from_serializable(deserialized)
+}
+
+
+pub struct MessageLog {
+    message_queue: RefCell<VecDeque<String>>,
+}
+
+impl MessageLog {
+    pub fn new() -> Self {
+        MessageLog {
+            message_queue: RefCell::new(VecDeque::new()),
+        }
+    }
+
+    pub fn queue_message(&self, msg: &str) {
+        self.message_queue.borrow_mut().push_back(msg.to_string());
+    }
+    
+    pub fn next_message(&self) -> Option<String> {
+        self.message_queue.borrow_mut().pop_front()
+    }
 }

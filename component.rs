@@ -3,11 +3,10 @@ use std::fmt::Debug;
 use std::rc::Rc;
 use std::vec;
 
-use serde::de::IgnoredAny;
-
 use crate::combat::{Combat, Health};
 use crate::gamestate::{get_position_from, has_components, Diff, GameState, Match};
-use crate::map::Coordinate;
+use crate::map::{pathfind, Coordinate};
+use crate::MessageLog;
 
 pub trait Diffable {
     fn apply_diff(&mut self, other: &Self);
@@ -18,6 +17,7 @@ pub trait Diffable {
 pub enum ComponentType {
     Player,
     Delete,
+    Name(String),
     Bump(Rc<RefCell<dyn Response>>),
     Image(i32),
     Position(Coordinate),
@@ -46,6 +46,7 @@ impl Diffable for ComponentType {
             }
             // Overwrite types
             (Self::Image(data), Self::Image(other_data)) => *data = *other_data,
+            (Self::Name(data), Self::Name(other_data)) => *data = other_data.clone(),
             (Self::Collision(data), Self::Collision(other_data)) => *data = *other_data,
             (Self::Bump(data), Self::Bump(other_data)) => data.clone_from(other_data),
             _ => {}
@@ -84,7 +85,7 @@ impl Diffable for Movement {
 }
 
 pub trait Response: Debug {
-    fn process(&self, own_id: usize, other_id: usize, other: Match) -> Vec<Diff>;
+    fn process(&self, own_id: usize, other_id: usize, other: Match, log: &MessageLog) -> Vec<Diff>;
 }
 
 #[derive(Debug, Clone)]
@@ -94,12 +95,14 @@ pub struct Interact {
 
 impl Interact {
     pub fn new_door() -> Self {
-        Interact { response: Some(open_door) }
+        Interact {
+            response: Some(open_door),
+        }
     }
 }
 
 impl Response for Interact {
-    fn process(&self, own_id: usize, other_id: usize, other: Match) -> Vec<Diff> {
+    fn process(&self, own_id: usize, other_id: usize, other: Match, log: &MessageLog) -> Vec<Diff> {
         if let Some(response_func) = self.response {
             response_func(self, own_id, other_id, other)
         } else {
@@ -158,7 +161,7 @@ impl Diffable for Inventory {
 }
 
 impl Response for Inventory {
-    fn process(&self, own_id: usize, other_id: usize, other: Match) -> Vec<Diff> {
+    fn process(&self, own_id: usize, other_id: usize, other: Match, log: &MessageLog) -> Vec<Diff> {
         if let Some(response_func) = self.response {
             response_func(self, own_id, other_id, other)
         } else {
@@ -230,7 +233,7 @@ impl TurnTaker {
             ..Default::default()
         }
     }
-    pub fn process_turn(&self, game: &GameState, own_id: usize) -> Vec<Diff> {
+    pub fn process_turn(&self, game: &GameState, own_id: usize, log: &MessageLog) -> Vec<Diff> {
         let (pl_id, pl_entity) = game.get_player();
         let my_entity = game.get_entity_of(own_id).unwrap();
         let pl_pos = get_position_from(pl_entity).unwrap();
@@ -241,8 +244,8 @@ impl TurnTaker {
                 return self.approach_player(game, own_id, my_pos, pl_pos);
             }
             AIAction::Attack => {
-                println!("Doggo bite.");
-                return game.propagate_bump_to(own_id, my_entity, pl_id);
+                log.queue_message("Doggo bite.");
+                return game.propagate_bump_to(own_id, my_entity, pl_id, log);
             }
             _ => {
                 return vec![];
@@ -257,32 +260,11 @@ impl TurnTaker {
         my_pos: Coordinate,
         pl_pos: Coordinate,
     ) -> Vec<Diff> {
-        let direction = self
-            .movement
-            .neighbors
-            .iter()
-            .filter_map(|&dir| {
-                // gather free directions into (distance_to_player, dir) pairs
-                let dest = dir + my_pos;
-                if let Some(_) = game.get_tile_occupant_id(dest) {
-                    None
-                } else {
-                    if game.is_tile_passable(dest) {
-                        Some((dest.distance(pl_pos), dir))
-                    } else {
-                        None
-                    }
-                }
-            })
-            .reduce(|(distance_a, data_a), (distance_b, data_b)| {
-                // get best pair
-                if distance_a < distance_b {
-                    (distance_a, data_a)
-                } else {
-                    (distance_b, data_b)
-                }
-            })
-            .map(|(_, data)| data);
+        let path = pathfind(my_pos, pl_pos, game);
+        let direction = match path {
+            Some(mut vec) => vec.pop(),
+            _ => None, 
+        };
 
         if let Some(coord) = direction {
             let diff = vec![ComponentType::Position(coord)];
