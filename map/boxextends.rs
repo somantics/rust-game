@@ -1,9 +1,12 @@
 use rand::prelude::*;
 use rand_distr::StandardNormal;
 use std::cmp::{max, min};
+use std::collections::{HashMap, HashSet};
 
+use super::mapbuilder::Axis;
+use crate::ecs::spawning::OBJECT_SPAWN_NAMES;
+use crate::ecs::{spawning, ECS};
 use crate::map::{Coordinate, Euclidian};
-use crate::mapbuilder::Axis;
 
 // Tracks areas on the grid and supports overlapping and orthogonal adjacency checks.
 // is also responsible for dividing space when an area is split into two.
@@ -267,3 +270,93 @@ impl Euclidian for BoxExtends {
         }
     }
 }
+
+type Range = (usize, usize);
+
+#[derive(Debug, Default, Clone)]
+pub struct Room {
+    pub extends: BoxExtends,
+    pub spawn_table: Option<HashMap<&'static str, Range>>,
+    pub door_locations: Vec<Coordinate>,
+}
+
+impl Room {
+    pub fn new(extends: BoxExtends) -> Self {
+        Room {
+            extends,
+            spawn_table: None,
+            door_locations: vec![],
+        }
+    }
+
+    fn spawn_doors(&self, ecs: &mut ECS) {
+        for coord in &self.door_locations {
+            if ecs.is_blocked_by_entity(*coord) {
+                continue;
+            }
+            spawning::make_door(ecs, *coord);
+        }
+    }
+
+    fn get_free_coordinate(occupied: &HashSet<Coordinate>, rng: &mut ThreadRng, x_min: i32, x_max: i32, y_min: i32, y_max: i32) -> Coordinate {
+        let mut coord = Coordinate {
+            x: rng.gen_range(x_min..=x_max),
+            y: rng.gen_range(y_min..=y_max),
+        };
+        // Ensure location is unoccupied. TODO: doesn't terminate if area is full
+        while occupied.contains(&coord) {
+            coord = Coordinate {
+                x: rng.gen_range(x_min..=x_max),
+                y: rng.gen_range(y_min..=y_max),
+            };
+        }
+        coord
+    }
+
+    pub fn spawn_entities(&self, ecs: &mut ECS) {
+        let mut rng = thread_rng();
+        let mut occupied = HashSet::<Coordinate>::new();
+
+        // Floor area coordinate bounds
+        let x_min = self.extends.top_left.x + 1;
+        let x_max = self.extends.bottom_right.x - 1;
+
+        let y_min = self.extends.top_left.y + 1;
+        let y_max = self.extends.bottom_right.y - 1;
+
+        if let Some(table) = &self.spawn_table {
+            // Process spawning table
+            for (&name, &(min, max)) in table.iter() {
+                if name == "Player" && ecs.has_player() {
+                    let coord = Self::get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
+                    ecs.set_player_position(coord);
+                    continue
+                } 
+                // Look for matching spawn function
+                if let Some(spawn_func) = OBJECT_SPAWN_NAMES.get(name) {
+                    // Generate amount
+                    let amount = rng.gen_range(min..=max);
+                    for _ in 0..amount {
+                        // Initial location to spawn
+                        let coord = Self::get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
+                        (spawn_func)(ecs, coord);
+                        occupied.insert(coord);
+                    }
+                }
+            }
+        }
+
+        self.spawn_doors(ecs);
+    }
+}
+
+/*
+
+template
+{
+    "monster name": 4-5
+    "chest": loot table class
+}
+
+
+*/

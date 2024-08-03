@@ -1,22 +1,28 @@
-import { VerticalBox, HorizontalBox } from "std-widgets.slint";
+import { VerticalBox, HorizontalBox, Button, ProgressIndicator } from "std-widgets.slint";
 global ImageIds {
   in-out property <[image]> images_by_index: [
       @image-url("icons/tile008.png"),
       @image-url("icons/tile011.png"),
       @image-url("icons/tile017.png"),
       @image-url("icons/tile148.png"),
-      @image-url("icons/tile031.png"), // 4 is none found
-      @image-url("icons/tile035.png"), 
-      @image-url("icons/tile165.png"), //weird doggo
-      @image-url("icons/tile032.png"), //closed chest
-      @image-url("icons/tile033.png"), //opened chest
-      @image-url("icons/tile025.png"), //closed door
-      @image-url("icons/tile020.png"), //opened "door"
+      @image-url("icons/tile031.png"), // none found or starry space
+      @image-url("icons/tile035.png"), // 5:
+      @image-url("icons/tile165.png"), // weird doggo
+      @image-url("icons/tile032.png"), // closed chest
+      @image-url("icons/tile033.png"), // opened chest
+      @image-url("icons/tile025.png"), // closed door
+      @image-url("icons/tile020.png"), // 10: opened "door"
+      @image-url("icons/tile166.png"), // the heavy
+      @image-url("icons/tile151.png"), // the pew pew
+      @image-url("icons/tile178.png"), // the pew pew pet
+      @image-url("icons/tile130.png"), // random corpse
+      @image-url("icons/tile121.png"), // 15: gold pile
+      @image-url("icons/tile013.png"), // stairs down
   ];
 }
 
 export enum InputCommand { 
-  Direction, Position, Wait,
+  Direction, Position, Shoot, Wait, Quit, Restart, LevelUp, Descend
  } 
 
 struct TileGraphics {
@@ -25,8 +31,9 @@ struct TileGraphics {
 
 component MapTile inherits Rectangle {
   callback clicked();
+  callback right-clicked();
 
-  in property <[int]> image_ids;
+  in property <TileGraphics> images;
 
   in property <int> grid_x;
   in property <int> grid_y;
@@ -38,15 +45,23 @@ component MapTile inherits Rectangle {
   width: size;
   height: size;
 
-  for id[i] in image_ids : Image {
+  for id[i] in images.image_ids : Image {
       source: ImageIds.images_by_index[id];
       width: parent.width;
       height: parent.height;
+      z: 0;
   }
 
   TouchArea {
-      clicked => {
+      pointer-event(PointerEvent) => {
+        if (PointerEvent.kind != PointerEventKind.down) {
+          return;
+        }
+        if (PointerEvent.button == PointerEventButton.right) {
+          root.right-clicked();
+        } else  if (PointerEvent.button == PointerEventButton.left) {
           root.clicked();
+        }
       }
   }
 }
@@ -54,7 +69,7 @@ component MapTile inherits Rectangle {
 component GameMap inherits Rectangle {
   in property <int> grid_width;
   in property <int> grid_height;
-  in property <length> tile-size;
+  in property <length> tile_size;
 
   in property <[TileGraphics]> memory_tiles;
 
@@ -70,11 +85,182 @@ component GameMap inherits Rectangle {
     grid_y: floor(i / grid_width);
     size: tile_size;
 
-    image_ids: tile.image_ids;
+    images: tile;
 
     clicked => {
       root.received-input(InputCommand.Position, self.grid_x, self.grid_y);
     }
+    right-clicked => {
+      root.received-input(InputCommand.Shoot, self.grid_x, self.grid_y);
+    }
+  }
+}
+
+component StatsDisplay inherits Rectangle {
+  in property <string> character-name;
+  in property <int> level;
+  in property <int> depth;
+  in property <float> hp-left;
+  in property <int> coins;
+  in property <float> xp-progress;
+  in property <int> strength;
+  in property <int> dexterity;
+  in property <int> cunning;
+  in property <int> melee-min-damage;
+  in property <int> melee-max-damage;
+  in property <int> ranged-min-damage;
+  in property <int> ranged-max-damage;
+  in property <float> melee-crit-chance;
+  in property <float> ranged-crit-chance;
+
+  VerticalLayout {
+    spacing: 4px;
+    // Name
+    Rectangle {
+      name := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: root.character-name;
+
+      }
+    }
+    // Level 
+    Rectangle {
+      HorizontalLayout {
+        level := Text {
+          horizontal-alignment: left;
+          width: 50%;
+          color: #B8CD55;
+          font-size: 14pt;
+          text: "Level " + root.level;
+        }
+        Text {
+          width: 50%;
+          color: #B8CD55;
+          font-size: 14pt;
+          text: "Depth " + root.depth;
+        }
+      }
+      
+    }
+    // HP bar
+    Rectangle {
+      HorizontalLayout {
+        Text {
+          width: 25%;
+          color: #B8CD55;
+          font-size: 14pt;
+          text: "HP";
+        }
+        ProgressIndicator {
+          width: 50%;
+          progress: hp-left;
+        }
+      }
+    }
+    // XP bar
+    Rectangle {
+      HorizontalLayout {
+        Text {
+          width: 25%;
+          color: #B8CD55;
+          font-size: 14pt;
+          text: "XP";
+        }
+        ProgressIndicator {
+          width: 50%;
+          progress: xp-progress;
+        }
+      }
+    }
+    // Wealth
+    Rectangle {
+      coins := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: "Coins: " + root.coins;
+      }
+    }
+    Rectangle {
+      height: 2%;
+    }
+    // Stats
+    Rectangle {
+      strength := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: "Strength: " + root.strength;
+      }
+    }
+    Rectangle {
+      dexterity := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: "Dexterity: " + root.dexterity;
+      }
+    }
+    Rectangle {
+      cunning := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: "Cunning: " + root.cunning;
+      }
+    }
+    Rectangle {
+      height: 2%;
+    }
+    Rectangle {
+      melee-title := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: "Melee Attack: " + root.melee-min-damage + "-" + root.melee-max-damage;
+      }
+    }
+    Rectangle {
+      Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 12pt;
+        text: "Crit chance: " + root.melee-crit-chance;
+      }
+    }
+    Rectangle {
+      height: 2%;
+    }
+    Rectangle {
+      ranged-title := Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 14pt;
+        text: "Ranged Attack: " + root.ranged-min-damage + "-" + root.ranged-max-damage;
+      }
+      
+    }
+    Rectangle {
+      Text {
+        horizontal-alignment: left;
+        width: 100%;
+        color: #B8CD55;
+        font-size: 12pt;
+        text: "Crit chance: " + ranged-crit-chance;
+      }
+    }
+    // Empty space below
+    Rectangle {}
   }
 }
 
@@ -91,11 +277,38 @@ component TextLog inherits Rectangle {
     height: parent.height - (parent.border-width + 2px) * 2;
     horizontal-alignment: left;
     vertical-alignment: top;
+
+    font-size: 12pt;
   }
 
   public function display_message(msg: string) {
     text-box.text = msg + "\n" + text-box.text;
   }
+}
+
+component PopUpBox inherits Rectangle {
+  in property <string> text;
+  in property <length> text-box-height;
+
+  background: #B8CD55;
+  border-color: #69903B;
+
+  border-width: 4px;
+
+  text_box := Text {
+    x: parent.border-width + 2px; 
+    y: parent.border-width + 2px;
+
+    height: text-box-height;
+    width: parent.width - (parent.border-width + 2px) * 2;
+
+    horizontal-alignment: center;
+    vertical-alignment: center;
+
+    text: text;
+    font-size: 16pt;
+  }
+  
 }
 
 export component MainWindow inherits Window {
@@ -106,16 +319,36 @@ export component MainWindow inherits Window {
 
   callback received_input(InputCommand, int, int);
 
+  // Map data
   in property <length> tile_size;
   in property <int> grid_width;
   in property <int> grid_height;
+  in property <int> depth;
 
+  // Game data
   in property <[TileGraphics]> memory_tiles;
+  in property <string> character-name;
+  in property <int> player-level;
+  in property <int> player-coins;
+  in property <int> player-health-current;
+  in property <int> player-health-max;
+  in property <int> player-xp-current;
+  in property <int> player-xp-goal;
+  in property <int> player-strength;
+  in property <int> player-dexterity;
+  in property <int> player-cunning;
+  in property <[int]> player-melee-damage;
+  in property <[int]> player-ranged-damage;
+  in property <float> player-melee-crit;
+  in property <float> player-ranged-crit;
+
+  // UI state
+  in-out property <bool> keyboard_enabled: true;
 
   HorizontalBox {
     VerticalBox {
       padding: 0;
-      GameMap { 
+      map :=GameMap { 
         tile-size: root.tile_size;
         grid_height: root.grid_height;
         grid_width: root.grid_width;
@@ -129,28 +362,157 @@ export component MainWindow inherits Window {
     
       message_log := TextLog {}
     }
+    stats := StatsDisplay {
+      depth: root.depth;
+      character-name: root.character-name;
+      level: player-level;
+      coins: player-coins;
+      hp-left: player-health-current / player-health-max;
+      xp-progress: player-xp-current / player-xp-goal;
+      
+      strength: player-strength;
+      dexterity: player-dexterity;
+      cunning: player-cunning;
+
+      melee-min-damage: player-melee-damage[0];
+      melee-max-damage: player-melee-damage[1];
+      melee-crit-chance: player-melee-crit;
+
+      ranged-min-damage: player-ranged-damage[0];
+      ranged-max-damage: player-ranged-damage[1];
+      ranged-crit-chance: player-ranged-crit;
+    }
   }
 
+  death-popup := PopupWindow {
+    padding: 12px;
+    close-on-click: false;
+
+    width: 128px * 2;
+    height: 64px * 2;
+
+    x: map.width / 2 - 128px;
+    y: map.height / 2 - 64px;
+
+    PopUpBox {
+      text: "You have died!";
+      text-box-height: 64px;
+
+      GridLayout {
+        spacing: 4px;
+        Row { Rectangle {} }
+        Row {
+          Rectangle { height: 60%; width: 15%;}
+          Rectangle {
+            height: 60%;
+  
+            new-game := Button {
+              //width: 24px;
+
+              text: "New Game";
+              clicked => { received_input(InputCommand.Restart, 0, 0) }
+            }
+          }
+          Rectangle {
+            height: 60%;
+  
+            quit := Button {
+              //width: 24px;
+
+              text: "Quit";
+              clicked => { received_input(InputCommand.Quit, 0, 0) }
+            }
+          }
+          Rectangle { height: 60%; width: 15%;}
+        }
+      }
+    }
+  }
+
+  level-up-popup := PopupWindow {
+    padding: 12px;
+    close-on-click: false;
+
+    width: 128px * 2;
+    height: 128px * 2;
+
+    x: map.width / 2 - 128px;
+    y: map.height / 2 - 128px;
+
+    PopUpBox {
+      text: "You have leveled up!";
+      text-box-height: 64px;
+      GridLayout {
+        spacing: 4px;
+        // Empty space at top
+        Row { Rectangle { height: 25%;} }
+        // Strength option
+        Row {
+          Rectangle { width: 15%;}
+          Rectangle {
+            Button {
+              text: "Strength up";
+              clicked => {
+                // Adjust Strength (0) by positive 1
+                root.received_input(InputCommand.LevelUp, 0, 1);
+                root.close_popups();
+              }
+            }
+          }
+          Rectangle { width: 15%;}
+        }
+        // Dexterity option
+        Row {
+          Rectangle { width: 15%;}
+          Rectangle {
+            Button {
+              text: "Dexterity up";
+              clicked => {
+                // Adjust Dexterity (1) by positive 1
+                root.received_input(InputCommand.LevelUp, 1, 1);
+                root.close_popups();
+              }
+            }
+  
+          }
+          Rectangle { width: 15%;}
+        }
+        // Cunning option
+        Row {
+          Rectangle { width: 15%;}
+          Rectangle {
+            Button {
+              text: "Cunning up";
+              clicked => {
+                // Adjust Cunning (2) by positive 1
+                root.received_input(InputCommand.LevelUp, 2, 1);
+                root.close_popups();
+              }
+            }
+          }
+          Rectangle { width: 15%;}
+        }
+        Row { Rectangle { height: 25%;} }
+      }
+    }
+  }
+  
+
   keyboard_handler := FocusScope {
+
     key-pressed(event) => {
-      if (event.text == "w") {
-
+      if (event.text == "w" && parent.keyboard_enabled) {
         received-input(InputCommand.Direction, 0, -1);
-
-      } else if (event.text == "a") {
-
+      } else if (event.text == "a" && parent.keyboard_enabled) {
         received-input(InputCommand.Direction, -1, 0);
-
-      } else if (event.text == "s") {
-
+      } else if (event.text == "s" && parent.keyboard_enabled) {
         received-input(InputCommand.Direction, 0, 1);
-
-      } else if (event.text == "d") {
-
+      } else if (event.text == "d" && parent.keyboard_enabled) {
         received-input(InputCommand.Direction, 1, 0);
-      } else if (event.text == " ") {
-
+      } else if (event.text == " " && parent.keyboard_enabled) {
         received-input(InputCommand.Wait, 0, 0);
+      } else if (event.text == ">" && parent.keyboard_enabled) {
+        received-input(InputCommand.Descend, 0, 0);
       }
       accept
     }
@@ -158,5 +520,21 @@ export component MainWindow inherits Window {
 
   public function display_message(msg: string) {
     message-log.display_message(msg);
+  }
+
+  public function display_death_popup() {
+    self.keyboard_enabled = false;
+    death-popup.show();
+  }
+
+  public function display_level_up_popup() {
+    self.keyboard_enabled = false;
+    level-up-popup.show();
+  }
+
+  public function close_popups() {
+    level-up-popup.close();
+    death-popup.close();
+    self.keyboard_enabled = true;
   }
 }
