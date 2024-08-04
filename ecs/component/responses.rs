@@ -79,6 +79,8 @@ pub fn award_inventory_response(
             xp: their_change.coins,
             ..Default::default()
         };
+        let msg = logger::generate_receive_gold_message(their_change.coins);
+        logger::log_message(&msg);
 
         vec![
             Delta::Change(Component::Inventory(their_items.make_change(their_change))),

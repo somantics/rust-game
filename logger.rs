@@ -43,3 +43,7 @@ pub fn generate_attack_message(attacker: &Name, defender: &Name, hit_message: &s
 pub fn generate_take_damage_message(defender: &Name, damage_taken: isize) -> String {
     vec![&defender.raw, "took", &damage_taken.to_string()].join(" ")
 } 
+
+pub fn generate_receive_gold_message(amount: isize) -> String {
+    vec!["You found", &amount.to_string(), "gold!"].join(" ")
+}
