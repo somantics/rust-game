@@ -10,6 +10,7 @@ use component::combat::Combat;
 use component::*;
 
 use crate::ecs::archetypes::{make_unit_report, UnitReport};
+use crate::map::boxextends::Room;
 use crate::map::{Coordinate, GameMap};
 
 use self::attributes::Attributes;
@@ -19,58 +20,58 @@ use self::system::ComponentQuery;
 pub type Entity = IndexedData<HashSet<usize>>;
 
 #[derive(Debug, Clone, Copy)]
-pub struct DeleteEntityOrder{
-    entity: EntityIdentifier
+pub struct DeleteEntityOrder {
+    entity: EntityIdentifier,
 }
 impl DeleteEntityOrder {
     fn new_from_component(component_id: usize) -> Self {
         DeleteEntityOrder {
-            entity: EntityIdentifier::new_from_component(component_id)
+            entity: EntityIdentifier::new_from_component(component_id),
         }
     }
 
     fn new_from_entity(entity_id: usize) -> Self {
         DeleteEntityOrder {
-            entity: EntityIdentifier::new_from_entity(entity_id)
+            entity: EntityIdentifier::new_from_entity(entity_id),
         }
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct DeleteComponentOrder{
-    component_id: usize, 
+pub struct DeleteComponentOrder {
+    component_id: usize,
     entity_id: Option<usize>,
 }
 
 #[derive(Debug, Clone)]
-pub struct MakeComponentOrder{
-    component: Component, 
-    entity: EntityIdentifier
+pub struct MakeComponentOrder {
+    component: Component,
+    entity: EntityIdentifier,
 }
 
 #[derive(Debug, Clone)]
-pub struct MakeEntityOrder{
-    components: Vec<Component>
+pub struct MakeEntityOrder {
+    components: Vec<Component>,
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct EntityIdentifier {
-    owned_component_id: Option<usize>, 
-    entity_id: Option<usize>
+    owned_component_id: Option<usize>,
+    entity_id: Option<usize>,
 }
 
 impl EntityIdentifier {
     fn new_from_component(component_id: usize) -> Self {
         Self {
             owned_component_id: Some(component_id),
-            entity_id: None
+            entity_id: None,
         }
     }
 
     fn new_from_entity(entity_id: usize) -> Self {
         Self {
             owned_component_id: None,
-            entity_id: Some(entity_id)
+            entity_id: Some(entity_id),
         }
     }
 }
@@ -79,14 +80,10 @@ impl EntityIdentifier {
 pub enum Delta {
     Change(Component),
     DeleteComponent(DeleteComponentOrder),
-    DeleteEntity(DeleteEntityOrder), //this is component index, not entity index
+    DeleteEntity(DeleteEntityOrder),
     MakeComponent(MakeComponentOrder),
-    MakeEntity(MakeEntityOrder)
+    MakeEntity(MakeEntityOrder),
 }
-
-/* left to do:
-improve pathfinding code
-*/
 
 pub struct ECS {
     component_storage: ComponentManager,
@@ -101,9 +98,14 @@ impl ECS {
         }
     }
 
+    pub fn print_counts(&self) {
+        println!("Components: {}", self.component_storage.get_component_count());
+        println!("Entities: {}", self.entity_storage.get_entity_count());
+    }
+
     pub fn spawn_all_entities(&mut self, map: &GameMap) {
         for room in map.graph.node_weights() {
-            room.spawn_entities(self);
+            room.spawn_entities(self, map.depth);
         }
     }
 
@@ -122,9 +124,7 @@ impl ECS {
     }
 
     pub fn add_component_to_entity(&mut self, entity_id: usize, mut component: Component) {
-
-        if component.is_of_type(&ComponentType::Player)
-        {
+        if component.is_of_type(&ComponentType::Player) {
             if let Some(old_player) = self.entity_storage.get_player_entity() {
                 for component_id in &old_player.data {
                     self.component_storage.remove_component(*component_id)
@@ -133,7 +133,7 @@ impl ECS {
             }
             self.entity_storage.set_new_player(entity_id);
         }
-        
+
         self.component_storage.assign_id(&mut component);
         self.attatch_component(entity_id, &mut component);
         self.component_storage.register_new(component);
@@ -164,19 +164,18 @@ impl ECS {
         let new_components = old_components.into_iter().cloned().collect();
         let new_entity_id = self.create_entity();
         self.add_components_to_entity(new_entity_id, new_components)
-
     }
 
     pub fn remove_component(&mut self, entity_id: usize, component_id: usize) {
-        self.entity_storage.remove_component(entity_id, component_id);
+        self.entity_storage
+            .remove_component(entity_id, component_id);
         self.component_storage.remove_component(component_id);
     }
 
-    
     fn remove_component_list(&mut self, vec: Vec<usize>) {
         for id in vec {
             self.component_storage.remove_component(id);
-        };
+        }
     }
 
     pub fn get_entities_matching_query(&self, query: ComponentQuery) -> Vec<&Entity> {
@@ -200,30 +199,31 @@ impl ECS {
         self.entity_storage.get_entity(entity_id)
     }
 
-    pub fn get_entity_id_from_component_id(&self, component_id: usize) -> usize {
-        self.entity_storage.get_entity_from_component(component_id).expect("Component has no entity.")
+    pub fn get_entity_id_from_component_id(&self, component_id: usize) -> Option<usize> {
+        self.entity_storage.get_entity_from_component(component_id)
     }
 
     fn get_ids_from_components(&self, components: Vec<&Component>) -> Vec<usize> {
-        components
-            .iter()
-            .map(|comp| comp.get_id())
-            .collect()
+        components.iter().map(|comp| comp.get_id()).collect()
     }
-    
+
     pub fn get_component(&self, component_id: usize) -> Option<&Component> {
         self.component_storage.get_component(&component_id)
     }
 
     pub fn get_components_from_entity(&self, entity_id: usize) -> Vec<&Component> {
-        if let Some(entity) = self.get_entity(entity_id){
+        if let Some(entity) = self.get_entity(entity_id) {
             self.component_storage.get_components(entity)
         } else {
             vec![]
         }
     }
 
-    pub fn get_component_from_entity(&self, entity_id: usize, comp_type: ComponentType) -> Option<&Component> {
+    pub fn get_component_from_entity(
+        &self,
+        entity_id: usize,
+        comp_type: ComponentType,
+    ) -> Option<&Component> {
         let components = self.get_components_from_entity(entity_id);
         components
             .iter()
@@ -266,12 +266,30 @@ impl ECS {
         match self.get_blocking_entity(coord) {
             Some(entity_id) => {
                 let components = self.get_components_from_entity(entity_id);
-                if let (Some(Component::Monster(_)), _) = take_component_from_refs(ComponentType::Monster, &components) {
+                if let (Some(Component::Monster(_)), _) =
+                    take_component_from_refs(ComponentType::Monster, &components)
+                {
                     true
                 } else {
                     false
                 }
-            },
+            }
+            None => false,
+        }
+    }
+
+    pub fn is_blocked_by_door(&self, coord: Coordinate) -> bool {
+        match self.get_blocking_entity(coord) {
+            Some(entity_id) => {
+                let components = self.get_components_from_entity(entity_id);
+                if let (Some(Component::Door(_)), _) =
+                    take_component_from_refs(ComponentType::Door, &components)
+                {
+                    true
+                } else {
+                    false
+                }
+            }
             None => false,
         }
     }
@@ -317,13 +335,19 @@ impl ECS {
             .collect()
     }
 
+    pub fn get_all_entities_in_room(&self, room: &Room) -> Vec<usize> {
+        self.entity_storage
+            .get_entities_in_room(room, &self.component_storage)
+            .iter()
+            .map(|entity| entity.index)
+            .collect()
+    }
+
     pub fn get_player_attacks(&self) -> (Option<Attack>, Option<Attack>) {
         let player_entity = self.entity_storage.get_player_entity().unwrap();
         let player_components = self.get_components_from_entity(player_entity.index);
-        if let (
-            Some(Component::Combat(combat)), 
-            _ 
-        ) = take_component_from_refs(ComponentType::Combat, &player_components) 
+        if let (Some(Component::Combat(combat)), _) =
+            take_component_from_refs(ComponentType::Combat, &player_components)
         {
             (combat.data.melee, combat.data.ranged)
         } else {
@@ -334,7 +358,7 @@ impl ECS {
     pub fn get_player_report(&self) -> Option<UnitReport> {
         if let Some(player_entity) = self.entity_storage.get_player_entity() {
             let player_components = self.get_components_from_entity(player_entity.index);
-            Some(make_unit_report(&player_components))
+            make_unit_report(&player_components)
         } else {
             None
         }
@@ -348,10 +372,11 @@ impl ECS {
         let player_entity = self.entity_storage.get_player_entity().unwrap();
         let player_components = self.get_components_from_entity(player_entity.index);
 
-        let (maybe_position, _) = take_component_from_refs(ComponentType::Position, &player_components);
+        let (maybe_position, _) =
+            take_component_from_refs(ComponentType::Position, &player_components);
         match maybe_position {
             Some(Component::Position(data)) => Some(data.data),
-            _ => None
+            _ => None,
         }
     }
 
@@ -359,7 +384,8 @@ impl ECS {
         let player_entity = self.entity_storage.get_player_entity().unwrap();
         let player_components = self.get_components_from_entity(player_entity.index);
 
-        let (maybe_position, _) = take_component_from_refs(ComponentType::Position, &player_components);
+        let (maybe_position, _) =
+            take_component_from_refs(ComponentType::Position, &player_components);
         if let Some(Component::Position(data)) = maybe_position.clone() {
             let change = data.make_change(coord - data.data);
             let delta = Delta::Change(Component::Position(change));
@@ -371,20 +397,23 @@ impl ECS {
         match change {
             Delta::Change(component) => {
                 self.component_storage.apply_change(component);
-            },
-            Delta::DeleteComponent(DeleteComponentOrder { component_id, entity_id }) => {
+            }
+            Delta::DeleteComponent(DeleteComponentOrder {
+                component_id,
+                entity_id,
+            }) => {
                 self.delete_component(component_id, entity_id);
-            },
-            Delta::MakeComponent(MakeComponentOrder{ component, entity  }) => {
+            }
+            Delta::MakeComponent(MakeComponentOrder { component, entity }) => {
                 self.add_component(component, entity);
-            },
+            }
             Delta::DeleteEntity(DeleteEntityOrder { entity }) => {
                 self.delete_entity(entity);
-            },
+            }
             Delta::MakeEntity(MakeEntityOrder { components }) => {
                 let entity_id = self.create_entity();
                 self.add_components_to_entity(entity_id, components);
-            },
+            }
         }
     }
 
@@ -416,25 +445,30 @@ impl ECS {
     }
 
     fn add_component(&mut self, component: Component, entity: EntityIdentifier) {
-        if let Some (entity_id) = self.get_entity_id_from_identifier(entity) {
+        if let Some(entity_id) = self.get_entity_id_from_identifier(entity) {
             self.add_component_to_entity(entity_id, component);
+        } else {
+            dbg!("Cannot find entity while adding component", entity);
         }
-        dbg!("Entity to be added to cannot be found", entity);
     }
 
     fn get_entity_id_from_identifier(&self, entity: EntityIdentifier) -> Option<usize> {
-        let EntityIdentifier{owned_component_id, entity_id} = entity;
+        let EntityIdentifier {
+            owned_component_id,
+            entity_id,
+        } = entity;
         if let Some(id) = entity_id {
             Some(id)
         } else if let Some(id) = owned_component_id {
-            Some(self.get_entity_id_from_component_id(id))
+            self.get_entity_id_from_component_id(id)
         } else {
             None
         }
     }
 
     pub fn entity_has_component(&self, entity_id: usize, comp_type: ComponentType) -> bool {
-        self.get_component_from_entity(entity_id, comp_type).is_some()
+        self.get_component_from_entity(entity_id, comp_type)
+            .is_some()
     }
 }
 
@@ -458,8 +492,11 @@ impl<T: Default> IndexedData<T> {
         Self { index: 0, data }
     }
 
-    pub fn make_change(&self, data: T)  -> Self {
-        Self { index: self.index, data }
+    pub fn make_change(&self, data: T) -> Self {
+        Self {
+            index: self.index,
+            data,
+        }
     }
 }
 
@@ -480,17 +517,20 @@ pub struct ComponentManager {
 
 impl ComponentManager {
     fn new() -> Self {
-        ComponentManager::default()
+        ComponentManager {
+            components: HashMap::<usize, Component>::with_capacity(450),
+            ..Default::default()
+        }
     }
 
     fn assign_id(&mut self, component: &mut Component) {
         component.set_id(self.next_id);
         self.next_id += 1;
-
     }
 
     fn register_new(&mut self, component: Component) {
-        self.components.insert(component.get_id(), component.clone());
+        self.components
+            .insert(component.get_id(), component.clone());
     }
 
     fn get_component(&self, id: &usize) -> Option<&Component> {
@@ -524,6 +564,10 @@ impl ComponentManager {
             self.apply_change(change);
         }
     }
+
+    fn get_component_count(&self) -> usize {
+        self.components.len()
+    }
 }
 
 #[derive(Debug, Default)]
@@ -535,12 +579,18 @@ pub struct EntityManager {
 
 impl EntityManager {
     fn new() -> Self {
-        Self { player_id: usize::MAX, ..Default::default() }
+        Self {
+            entities: Vec::<Entity>::with_capacity(65),
+            player_id: usize::MAX,
+            ..Default::default()
+        }
     }
 
+    fn get_entity_count(&self) -> usize {
+        self.entities.len()
+    }
     fn get_entity_from_component(&self, component_id: usize) -> Option<usize> {
-        self
-            .entities
+        self.entities
             .iter()
             .find(|entity| entity.data.contains(&component_id))
             .map(|entity| entity.index)
@@ -566,8 +616,35 @@ impl EntityManager {
                     .data
                     .iter()
                     .find(|comp_id| {
-                        if let Some(Component::Position(data)) = component_manager.get_component(comp_id) {
+                        if let Some(Component::Position(data)) =
+                            component_manager.get_component(comp_id)
+                        {
                             data.data == position
+                        } else {
+                            false
+                        }
+                    })
+                    .is_some()
+            })
+            .collect()
+    }
+
+    fn get_entities_in_room(
+        &self,
+        room: &Room,
+        component_manager: &ComponentManager,
+    ) -> Vec<&Entity> {
+        self.entities
+            .iter()
+            .filter(|entity| {
+                entity
+                    .data
+                    .iter()
+                    .find(|comp_id| {
+                        if let Some(Component::Position(data)) =
+                            component_manager.get_component(comp_id)
+                        {
+                            room.extends.contains_point(data.data)
                         } else {
                             false
                         }
@@ -628,12 +705,6 @@ impl EntityManager {
         // todo! make use of recycling system in ids_to_reuse
     }
 }
-
-// impl Default for EntityManager {
-//     fn default() -> Self {
-//         Self { entities: Default::default(), ids_to_reuse: Default::default(), player_id: usize::MAX }
-//     }
-// }
 
 pub fn get_matching_components<'a>(
     components: Vec<&'a Component>,

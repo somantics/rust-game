@@ -1,8 +1,8 @@
 use component::combat;
 
 use crate::{
-    ecs::{component, take_component_from_refs},
     ecs::component::ComponentType,
+    ecs::{component, take_component_from_refs},
     event::InteractionEvent,
     map::Coordinate,
 };
@@ -14,7 +14,7 @@ use super::{
     system::ComponentQuery,
     Component, IndexedData, Name,
 };
-thread_local!{
+thread_local! {
     pub static TURNTAKER: ComponentQuery = ComponentQuery {
         required: vec![
             ComponentType::Name,
@@ -24,12 +24,11 @@ thread_local!{
         ],
         optional: vec![
             ComponentType::Attributes,
-            ComponentType::Movement,
             ComponentType::Health,
             ComponentType::Combat,
         ],
     };
-    
+
     pub static PLAYER: ComponentQuery = ComponentQuery {
         required: vec![ComponentType::Player],
         optional: vec![],
@@ -49,20 +48,21 @@ pub struct UnitReport {
 }
 
 // todo panics at looking for position on player (who spawned with a position?)
-pub fn make_unit_report<'a>(unit_components: &'a Vec<&'a Component>) -> UnitReport {
+pub fn make_unit_report<'a>(unit_components: &'a Vec<&'a Component>) -> Option<UnitReport> {
     let (maybe_position, components) =
         take_component_from_refs(ComponentType::Position, unit_components);
     let position = match maybe_position {
         Some(Component::Position(data)) => data.to_owned(),
-        _ => panic!("Unit has no position."),
+        _ => return None,
     };
     let (maybe_combat, components) = take_component_from_refs(ComponentType::Combat, &components);
     let combat = match maybe_combat {
         Some(Component::Combat(data)) => data.to_owned(),
-        _ => panic!("Unit has no combat."),
+        _ => return None,
     };
 
-    let (maybe_stats, components) = take_component_from_refs(ComponentType::Attributes, &components);
+    let (maybe_stats, components) =
+        take_component_from_refs(ComponentType::Attributes, &components);
     let stats = match maybe_stats {
         Some(Component::Attributes(data)) => Some(data.to_owned()),
         _ => None,
@@ -83,23 +83,28 @@ pub fn make_unit_report<'a>(unit_components: &'a Vec<&'a Component>) -> UnitRepo
         _ => None,
     };
 
-    let payload: Vec<Component> = unit_components.into_iter().map(|&elem| elem.to_owned()).collect();
+    let payload: Vec<Component> = unit_components
+        .into_iter()
+        .map(|&elem| elem.to_owned())
+        .collect();
 
-    let attack = combat::calculate_melee_attack(&combat.data, IndexedData::unwrap_data(stats.as_ref()));
+    let attack =
+        combat::calculate_melee_attack(&combat.data, IndexedData::unwrap_data(stats.as_ref()));
     let bump = InteractionEvent {
         event_type: crate::event::EventType::Bump,
         attack,
         payload: payload.clone(),
     };
 
-    let attack = combat::calculate_ranged_attack(&combat.data, IndexedData::unwrap_data(stats.as_ref()));
+    let attack =
+        combat::calculate_ranged_attack(&combat.data, IndexedData::unwrap_data(stats.as_ref()));
     let shoot = InteractionEvent {
         event_type: crate::event::EventType::Shot,
         attack,
         payload,
     };
 
-    UnitReport {
+    Some(UnitReport {
         position,
         combat,
         name,
@@ -108,5 +113,5 @@ pub fn make_unit_report<'a>(unit_components: &'a Vec<&'a Component>) -> UnitRepo
         stats,
         health,
         items,
-    }
+    })
 }

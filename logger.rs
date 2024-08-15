@@ -1,10 +1,6 @@
-use std::{
-    cell::RefCell, 
-    collections::VecDeque
-};
+use std::{cell::RefCell, collections::VecDeque};
 
 use crate::ecs::component::Name;
-
 
 thread_local!(
     pub static LOG: MessageLog = MessageLog::new();
@@ -36,13 +32,25 @@ pub fn log_message(msg: &str) {
     LOG.with(|log| log.queue_message(msg));
 }
 
-pub fn generate_attack_message(attacker: &Name, defender: &Name, hit_message: &str, damage_taken: isize) -> String {
-    vec![&attacker.raw, hit_message, &defender.raw, "for", &damage_taken.to_string()].join(" ")
-} 
+pub fn generate_attack_message(
+    attacker: &Name,
+    defender: &Name,
+    hit_message: &str,
+    damage_taken: isize,
+) -> String {
+    vec![
+        &attacker.raw,
+        hit_message,
+        &defender.raw,
+        "for",
+        &damage_taken.to_string(),
+    ]
+    .join(" ")
+}
 
 pub fn generate_take_damage_message(defender: &Name, damage_taken: isize) -> String {
     vec![&defender.raw, "took", &damage_taken.to_string()].join(" ")
-} 
+}
 
 pub fn generate_receive_gold_message(amount: isize) -> String {
     vec!["You found", &amount.to_string(), "gold!"].join(" ")

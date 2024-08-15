@@ -1,10 +1,11 @@
 use petgraph::Graph;
 use serde::{Deserialize, Serialize};
 use std::{
-    cmp::Reverse,
-    collections::HashMap,
-    ops::{Add, Sub},
+    cell::RefCell,
+    collections::{HashMap, HashSet, VecDeque},
+    ops::{Add, Mul, Sub},
 };
+use tile::WALL_TILE_ID;
 
 use crate::{
     ecs::{component::Diffable, ECS},
@@ -16,12 +17,13 @@ use crate::{
 
 pub mod boxextends;
 pub mod mapbuilder;
-pub mod tile;
 pub mod pathfinding;
+pub mod tile;
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct GameMap {
     pub map: HashMap<Coordinate, GameTile>,
+    pub explored: RefCell<HashSet<Coordinate>>,
     pub graph: Graph<Room, (), petgraph::Undirected>,
     pub width: usize,
     pub height: usize,
@@ -38,6 +40,12 @@ impl GameMap {
                     x: (i % self.width) as i32,
                     y: (i / self.width) as i32,
                 };
+
+                if !self.explored.borrow_mut().contains(&coord) {
+                    let im_id = TILE_REGISTRY[&TILE_NOT_FOUND.index].image.id;
+                    let im_depth = TILE_REGISTRY[&TILE_NOT_FOUND.index].image.depth;
+                    return vec![vec![im_id, im_depth]];
+                }
 
                 // assemble image ID data
                 match self.map.get(&coord) {
@@ -76,10 +84,12 @@ impl GameMap {
 
     pub fn create_empty(width: usize, height: usize) -> GameMap {
         let map = HashMap::<Coordinate, GameTile>::new();
+        let explored = RefCell::new(HashSet::<Coordinate>::new());
         let graph = Graph::default();
 
         GameMap {
             map,
+            explored,
             width,
             height,
             graph,
@@ -87,8 +97,87 @@ impl GameMap {
         }
     }
 
-    pub fn coordinate_to_index(&self, coord: Coordinate) -> usize {
-        (coord.y * self.width as i32 + coord.x) as usize
+    pub fn explore_room(&self, coord: Coordinate) {
+        for room in self.get_room(coord) {
+            let Coordinate { x: x_min, y: y_min } = room.extends.top_left;
+            let Coordinate { x: x_max, y: y_max } = room.extends.bottom_right;
+            for i in x_min..=x_max {
+                for j in y_min..=y_max {
+                    self.explored.borrow_mut().insert(Coordinate { x: i, y: j });
+                }
+            }
+        }
+    }
+
+    pub fn explore_flood_fill(&self, coord: Coordinate, ecs: &ECS) {
+        let mut explored = self.explored.borrow_mut();
+        let adjacent = vec![
+            Coordinate { x: 1, y: 0 },
+            Coordinate { x: -1, y: 0 },
+            Coordinate { x: 0, y: 1 },
+            Coordinate { x: 0, y: -1 },
+        ];
+
+        let start = coord;
+        let mut fill_queue: VecDeque<Coordinate> = VecDeque::new();
+
+        fill_queue.push_front(start);
+        let unvisited_neighbors = adjacent.iter().filter_map(|dir| {
+            if !explored.contains(&(start + *dir)) {
+                Some(start + *dir)
+            } else {
+                None
+            }
+        });
+
+        for unvisited in unvisited_neighbors {
+            fill_queue.push_front(unvisited);
+        }
+
+        while let Some(current) = fill_queue.pop_back() {
+            explored.insert(current);
+
+            let unvisited_neighbors: Vec<Coordinate> = adjacent
+                .iter()
+                .filter_map(|dir| {
+                    if !explored.contains(&(current + *dir)) {
+                        Some(current + *dir)
+                    } else {
+                        None
+                    }
+                })
+                .collect();
+
+            if ecs.is_blocked_by_door(current) || self.is_tile_los_blocking(current) {
+                // explore corners before we terminate
+                for unvisited in unvisited_neighbors {
+                    let visited_neighbors = adjacent
+                        .iter()
+                        .filter(|dir| {
+                            explored.contains(&(unvisited + **dir))
+                        })
+                        .count();
+                    if visited_neighbors >= 2 
+                        &&  self.is_tile_los_blocking(unvisited)
+                    {
+                        explored.insert(unvisited);
+                    }
+                }
+                continue;
+            };
+
+            for unvisited in unvisited_neighbors {
+                fill_queue.push_front(unvisited);
+            }
+        }
+    }
+
+    pub fn get_room(&self, coord: Coordinate) -> Vec<&Room> {
+        self.graph
+            .node_weights()
+            .into_iter()
+            .filter(|room| room.extends.contains_point(coord))
+            .collect()
     }
 
     pub fn to_serializable(&self) -> GameMapSerializable {
@@ -114,6 +203,7 @@ impl GameMap {
 
         GameMap {
             map: hash_map,
+            explored: RefCell::new(HashSet::new()),
             width: other.width,
             height: other.height,
             graph: Graph::default(),
@@ -193,6 +283,16 @@ impl Sub for Coordinate {
     }
 }
 
+impl Mul<i32> for Coordinate {
+    type Output = Coordinate;
+    fn mul(self, rhs: i32) -> Self::Output {
+        Coordinate {
+            x: self.x * rhs,
+            y: self.y * rhs,
+        }
+    }
+}
+
 pub trait Euclidian {
     fn distance_to<T>(&self, other: T) -> f32
     where
@@ -200,4 +300,3 @@ pub trait Euclidian {
 
     fn position(&self) -> Coordinate;
 }
-

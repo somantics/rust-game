@@ -4,7 +4,6 @@ use super::Diffable;
 pub struct Attributes {
     pub strength: isize,
     pub dexterity: isize,
-    pub cunning: isize,
     pub level: isize,
     pub xp: isize,
     pub level_pending: bool,
@@ -15,7 +14,6 @@ impl Diffable for Attributes {
         // raw attributes
         self.strength += other.strength;
         self.dexterity += other.dexterity;
-        self.cunning += other.cunning;
         // leveling up
         self.level += other.level;
         self.xp += other.xp;

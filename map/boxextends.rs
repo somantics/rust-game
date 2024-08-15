@@ -52,7 +52,7 @@ impl BoxExtends {
         self_overlaps_other || other_overlaps_self
     }
 
-    fn contains_point(&self, point: Coordinate) -> bool {
+    pub fn contains_point(&self, point: Coordinate) -> bool {
         self.top_left.x <= point.x
             && point.x <= self.bottom_right.x
             && self.top_left.y <= point.y
@@ -193,12 +193,11 @@ impl BoxExtends {
         }
     }
 
-    pub fn make_edge_vicinity_boxes(area: &BoxExtends, scan_distance: i32) -> Vec<BoxExtends> {
+    pub fn make_edge_vicinity_boxes(area: &BoxExtends, scan_distance: i32, overlap: i32) -> Vec<BoxExtends> {
         // Creates hitboxes that check the sides of 'area' up to 'scan_distance'
-        // TODO: RENAME
         let above = BoxExtends {
             top_left: Coordinate {
-                x: area.top_left.x + 1,
+                x: area.top_left.x + overlap,
                 y: if scan_distance <= area.top_left.y {
                     area.top_left.y - scan_distance
                 } else {
@@ -206,18 +205,18 @@ impl BoxExtends {
                 },
             },
             bottom_right: Coordinate {
-                x: area.bottom_right.x - 1,
+                x: area.bottom_right.x - overlap,
                 y: area.top_left.y,
             },
         };
 
         let below = BoxExtends {
             top_left: Coordinate {
-                x: area.top_left.x + 1,
+                x: area.top_left.x + overlap,
                 y: area.bottom_right.y,
             },
             bottom_right: Coordinate {
-                x: area.bottom_right.x - 1,
+                x: area.bottom_right.x - overlap,
                 y: area.bottom_right.y + scan_distance,
             },
         };
@@ -229,22 +228,22 @@ impl BoxExtends {
                 } else {
                     0
                 },
-                y: area.top_left.y + 1,
+                y: area.top_left.y + overlap,
             },
             bottom_right: Coordinate {
                 x: area.top_left.x,
-                y: area.bottom_right.y - 1,
+                y: area.bottom_right.y - overlap,
             },
         };
 
         let right = BoxExtends {
             top_left: Coordinate {
                 x: area.bottom_right.x,
-                y: area.top_left.y + 1,
+                y: area.top_left.y + overlap,
             },
             bottom_right: Coordinate {
                 x: area.bottom_right.x + scan_distance,
-                y: area.bottom_right.y - 1,
+                y: area.bottom_right.y - overlap,
             },
         };
 
@@ -289,22 +288,37 @@ impl Room {
         }
     }
 
-    fn spawn_doors(&self, ecs: &mut ECS) {
+    fn spawn_doors(&self, ecs: &mut ECS, depth: usize) {
         for coord in &self.door_locations {
             if ecs.is_blocked_by_entity(*coord) {
                 continue;
             }
-            spawning::make_door(ecs, *coord);
+            spawning::make_door(ecs, *coord, depth);
         }
     }
 
-    fn get_free_coordinate(occupied: &HashSet<Coordinate>, rng: &mut ThreadRng, x_min: i32, x_max: i32, y_min: i32, y_max: i32) -> Coordinate {
+    fn adjacent_to_door(&self, coord: Coordinate) -> bool {
+        self.door_locations
+            .iter()
+            .find(|door| coord.distance(**door) <= 1.0)
+            .is_some()
+    }
+
+    fn get_free_coordinate(
+        &self,
+        occupied: &HashSet<Coordinate>,
+        rng: &mut ThreadRng,
+        x_min: i32,
+        x_max: i32,
+        y_min: i32,
+        y_max: i32,
+    ) -> Coordinate {
         let mut coord = Coordinate {
             x: rng.gen_range(x_min..=x_max),
             y: rng.gen_range(y_min..=y_max),
         };
         // Ensure location is unoccupied. TODO: doesn't terminate if area is full
-        while occupied.contains(&coord) {
+        while occupied.contains(&coord) || self.adjacent_to_door(coord) {
             coord = Coordinate {
                 x: rng.gen_range(x_min..=x_max),
                 y: rng.gen_range(y_min..=y_max),
@@ -313,7 +327,7 @@ impl Room {
         coord
     }
 
-    pub fn spawn_entities(&self, ecs: &mut ECS) {
+    pub fn spawn_entities(&self, ecs: &mut ECS, depth: usize) {
         let mut rng = thread_rng();
         let mut occupied = HashSet::<Coordinate>::new();
 
@@ -328,25 +342,27 @@ impl Room {
             // Process spawning table
             for (&name, &(min, max)) in table.iter() {
                 if name == "Player" && ecs.has_player() {
-                    let coord = Self::get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
+                    let coord =
+                        self.get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
                     ecs.set_player_position(coord);
-                    continue
-                } 
+                    continue;
+                }
                 // Look for matching spawn function
                 if let Some(spawn_func) = OBJECT_SPAWN_NAMES.get(name) {
                     // Generate amount
                     let amount = rng.gen_range(min..=max);
                     for _ in 0..amount {
                         // Initial location to spawn
-                        let coord = Self::get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
-                        (spawn_func)(ecs, coord);
+                        let coord = self
+                            .get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
+                        (spawn_func)(ecs, coord, depth);
                         occupied.insert(coord);
                     }
                 }
             }
         }
 
-        self.spawn_doors(ecs);
+        self.spawn_doors(ecs, depth);
     }
 }
 

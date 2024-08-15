@@ -30,7 +30,9 @@ impl EventResponse {
         (self.response_function)(event, &ecs.get_components_from_entity(self.own_entity))
     }
 
-    pub fn new_with(response_function: fn(&InteractionEvent, &Vec<&Component>) -> Vec<Delta>) -> Self {
+    pub fn new_with(
+        response_function: fn(&InteractionEvent, &Vec<&Component>) -> Vec<Delta>,
+    ) -> Self {
         Self {
             response_function,
             ..Default::default()

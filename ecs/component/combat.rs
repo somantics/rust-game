@@ -4,12 +4,12 @@ use crate::ecs::{Component, Delta, IndexedData};
 
 use super::{attributes::Attributes, inventory::Inventory, Diffable};
 
-const DEX_BONUS_DMG_MULTIPLIER: f32 = 0.5;
-const STR_BONUS_DMG_MULTIPLIER: f32 = 0.25;
-const BONUS_DMG_SCALE: f32 = 0.8;
-const BASE_CRIT_CHANCE: f64 = 0.15;
-const CUN_CRIT_CHANCE_BONUS: f64 = 0.15;
-const BASE_CRIT_MULTIPLIER: f64 = 2.0;
+pub const DEX_BONUS_DMG_MULTIPLIER: f32 = 0.7;
+pub const STR_BONUS_DMG_MULTIPLIER: f32 = 0.2;
+pub const BONUS_DMG_SCALE: f32 = 0.8;
+pub const DMG_SPAN_FACTOR: f32 = 1.25;
+pub const BASE_CRIT_CHANCE: f64 = 0.05;
+pub const BASE_CRIT_MULTIPLIER: f32 = 1.5;
 
 #[derive(Debug, Clone)]
 pub struct Combat {
@@ -50,10 +50,10 @@ pub struct Health {
 }
 
 impl Health {
-    pub fn new(health: isize)  -> Self {
+    pub fn new(health: isize) -> Self {
         Health {
             current: health,
-            max: health
+            max: health,
         }
     }
 
@@ -96,7 +96,7 @@ pub struct HitMessages {
 }
 
 impl HitMessages {
-    fn new(default: &'static str, crit: &'static str) -> Self {
+    pub fn new(default: &'static str, crit: &'static str) -> Self {
         Self { default, crit }
     }
 }
@@ -114,7 +114,7 @@ pub struct Attack {
     pub damage_base: isize,
     pub damage_spread: isize,
     pub crit_chance_bonus: f64,
-    pub crit_multiplier_bonus: f64,
+    pub crit_multiplier_bonus: f32,
     pub damage_type: DamageType,
     pub hit_messages: HitMessages,
     pub max_range: isize,
@@ -126,6 +126,7 @@ impl Attack {
             damage_base,
             damage_spread,
             hit_messages: HitMessages::new("hit", "decimated"),
+            crit_chance_bonus: 0.1,
             ..Default::default()
         }
     }
@@ -135,13 +136,13 @@ impl Attack {
             damage_base,
             damage_spread,
             hit_messages: HitMessages::new("shot", "sniped"),
-            max_range: 6,
+            max_range: 5,
             ..Default::default()
         }
     }
 }
 
-pub fn get_bonus_dmg(attr: &Attributes, attack: &Attack) -> isize {
+pub fn get_bonus_dmg(attr: &Attributes, attack: &Attack) -> (isize, isize) {
     let adj_strength = attr.strength - 5;
     let adj_dexterity = attr.dexterity - 5;
     let str_bonus = adj_strength as f32
@@ -153,10 +154,13 @@ pub fn get_bonus_dmg(attr: &Attributes, attack: &Attack) -> isize {
         * BONUS_DMG_SCALE
         * attack.damage_base as f32;
 
-    (str_bonus + dex_bonus).ceil() as isize
+    (
+        (str_bonus + dex_bonus).ceil() as isize,
+        ((str_bonus + dex_bonus) * DMG_SPAN_FACTOR).ceil() as isize,
+    )
 }
 
-pub fn get_damage_multiplier(critical: bool) -> f64 {
+pub fn get_damage_multiplier(critical: bool) -> f32 {
     if critical {
         BASE_CRIT_MULTIPLIER
     } else {
@@ -165,28 +169,23 @@ pub fn get_damage_multiplier(critical: bool) -> f64 {
 }
 
 fn get_damage(attack: &Attack, attributes: Option<&Attributes>, critical: bool) -> isize {
-    let rand_factor = thread_rng().gen_range(0..=attack.damage_spread);
-    let raw_damage = attack.damage_base + rand_factor;
+    let mut bonus_damage = (0,0);
+    let mut damage_multiplier = 1.0;
     if let Some(stats) = attributes {
-        let bonus_dmg = get_bonus_dmg(&stats, attack);
-        let mut damage_multiplier = get_damage_multiplier(critical);
+        bonus_damage = get_bonus_dmg(&stats, attack);
+        damage_multiplier = get_damage_multiplier(critical);
         if critical {
             damage_multiplier += attack.crit_multiplier_bonus;
         }
-        ((raw_damage + bonus_dmg) as f64 * damage_multiplier).max(0.0) as isize
-    } else {
-        raw_damage
-    }
-}
-
-pub fn get_crit_chance(attr: &Attributes) -> f64 {
-    let adj_cunning = (attr.cunning - 5) as f64;
-    (BASE_CRIT_CHANCE + adj_cunning * CUN_CRIT_CHANCE_BONUS).clamp(0.05, 0.95)
+    } 
+    let rand_factor = thread_rng().gen_range(0..=attack.damage_spread + (bonus_damage.1 - bonus_damage.0));
+    let raw_damage = attack.damage_base + bonus_damage.0 + rand_factor;
+    (raw_damage as f32 * damage_multiplier) as isize
 }
 
 pub fn crit_roll(attack: &Attack, attributes: Option<&Attributes>) -> bool {
     if let Some(stats) = attributes {
-        let crit_chance = get_crit_chance(stats) + attack.crit_chance_bonus;
+        let crit_chance = BASE_CRIT_CHANCE + attack.crit_chance_bonus;
         thread_rng().gen_bool(crit_chance)
     } else {
         false
@@ -262,7 +261,30 @@ pub fn default_take_damage(
     };
 
     (
-        vec![Delta::Change(Component::Health(health.make_change(damage_taken)))],
-        reduced_damage
+        vec![Delta::Change(Component::Health(
+            health.make_change(damage_taken),
+        ))],
+        reduced_damage,
+    )
+}
+
+pub fn default_take_half_damage(
+    attack: &AttackReport,
+    health: &IndexedData<Health>,
+    maybe_stats: Option<&IndexedData<Attributes>>,
+    maybe_items: Option<&IndexedData<Inventory>>,
+) -> (Vec<Delta>, isize) {
+    let armor = default_calculate_armor(attack.damage_type, maybe_stats, maybe_items);
+    let reduced_damage = default_calculate_reduction(attack.damage, armor) / 2;
+    let damage_taken = Health {
+        current: -reduced_damage,
+        max: 0,
+    };
+
+    (
+        vec![Delta::Change(Component::Health(
+            health.make_change(damage_taken),
+        ))],
+        reduced_damage,
     )
 }

@@ -1,8 +1,7 @@
-
-use std::{cmp::Reverse, collections::HashMap};
-use priority_queue::PriorityQueue;
-use crate::ecs::{component::ComponentType, ECS};
 use super::{Coordinate, GameMap};
+use crate::ecs::{component::ComponentType, ECS};
+use priority_queue::PriorityQueue;
+use std::{cmp::Reverse, collections::HashMap};
 
 #[derive(Debug, Hash, Clone, Copy)]
 struct NodeData {
@@ -59,9 +58,9 @@ pub fn pathfind<F>(
     heuristic: F,
     ignore_units: bool,
     ignore_doors: bool,
-) -> Option<Vec<Coordinate>> 
-where 
-    F: Fn(Coordinate) -> usize
+) -> Option<Vec<Coordinate>>
+where
+    F: Fn(Coordinate) -> usize,
 {
     let return_early = true;
     let origin_h_value = heuristic(origin);
@@ -79,19 +78,18 @@ where
 
     open.push(origin, Reverse(NodeData::new(origin_h_value)));
 
-    (last_node, closed) = 
-    fill_path_map(
-        open, 
-        closed, 
-        last_node, 
-        &neighbors, 
-        &destination, 
-        heuristic, 
-        return_early, 
+    (last_node, closed) = fill_path_map(
+        open,
+        closed,
+        last_node,
+        &neighbors,
+        &destination,
+        heuristic,
+        return_early,
         ignore_units,
-        ignore_doors, 
-        map, 
-        ecs
+        ignore_doors,
+        map,
+        ecs,
     );
 
     // check if we have a solution
@@ -101,7 +99,11 @@ where
     calculate_sequence(last_node, closed, origin)
 }
 
-fn calculate_sequence(mut last_node: (Coordinate, NodeData), closed: HashMap<Coordinate, NodeData>, origin: Coordinate) -> Option<Vec<Coordinate>> {
+fn calculate_sequence(
+    mut last_node: (Coordinate, NodeData),
+    closed: HashMap<Coordinate, NodeData>,
+    origin: Coordinate,
+) -> Option<Vec<Coordinate>> {
     let mut sequence: Vec<Coordinate> = Vec::new();
 
     while let Some(parent) = last_node.1.parent {
@@ -122,16 +124,24 @@ fn calculate_sequence(mut last_node: (Coordinate, NodeData), closed: HashMap<Coo
     Some(sequence)
 }
 
-fn get_passable(neighbors: &Vec<Coordinate>, visited_coord: &Coordinate, destination: &Coordinate, ignore_units: bool, ignore_doors: bool, map: &GameMap, ecs: &ECS) -> Vec<Coordinate> {
+fn get_passable(
+    neighbors: &Vec<Coordinate>,
+    visited_coord: &Coordinate,
+    destination: &Coordinate,
+    ignore_units: bool,
+    ignore_doors: bool,
+    map: &GameMap,
+    ecs: &ECS,
+) -> Vec<Coordinate> {
     neighbors
         .iter()
         .map(|dir| *visited_coord + *dir)
         .filter(|&coord| {
             let blocking_entity = ecs.get_blocking_entity(coord);
             (
-                map.is_tile_passable(coord) && 
+                map.is_tile_passable(coord) &&
                 (
-                    blocking_entity.is_none() 
+                    blocking_entity.is_none()
                     || ignore_units && ecs.entity_has_component(blocking_entity.unwrap(), ComponentType::Monster) // only one blocking entity, so if it's monster ignore
                     || ignore_doors && ecs.entity_has_component(blocking_entity.unwrap(), ComponentType::Door)
                 )
@@ -140,9 +150,8 @@ fn get_passable(neighbors: &Vec<Coordinate>, visited_coord: &Coordinate, destina
         }).collect()
 }
 
-fn fill_path_map<F>
-(
-    mut open: PriorityQueue<Coordinate, Reverse<NodeData>>, 
+fn fill_path_map<F>(
+    mut open: PriorityQueue<Coordinate, Reverse<NodeData>>,
     mut closed: HashMap<Coordinate, NodeData>,
     mut last_node: (Coordinate, NodeData),
     neighbors: &Vec<Coordinate>,
@@ -152,13 +161,10 @@ fn fill_path_map<F>
     ignore_units: bool,
     ignore_doors: bool,
     map: &GameMap,
-    ecs: &ECS
-) -> (
-    (Coordinate, NodeData), 
-    HashMap<Coordinate, NodeData>
-)
-where 
-    F: Fn(Coordinate) -> usize
+    ecs: &ECS,
+) -> ((Coordinate, NodeData), HashMap<Coordinate, NodeData>)
+where
+    F: Fn(Coordinate) -> usize,
 {
     while let Some((visited_coord, Reverse(visited_data))) = open.pop() {
         // add visited node to closed
@@ -169,7 +175,15 @@ where
             break;
         }
 
-        let passable_neighbors = get_passable(neighbors, &visited_coord, &destination, ignore_units, ignore_doors, map, ecs);
+        let passable_neighbors = get_passable(
+            neighbors,
+            &visited_coord,
+            &destination,
+            ignore_units,
+            ignore_doors,
+            map,
+            ecs,
+        );
 
         for neighbor_coord in passable_neighbors {
             // neighbor already visited
@@ -201,9 +215,9 @@ where
                     }),
                 );
             }
-        };
+        }
     }
-    return (last_node, closed)
+    return (last_node, closed);
 }
 
 pub fn calculate_pathing_grid<F>(
@@ -214,9 +228,9 @@ pub fn calculate_pathing_grid<F>(
     heuristic: F,
     ignore_units: bool,
     ignore_doors: bool,
-) -> HashMap<Coordinate, Coordinate> 
-where 
-    F: Fn(Coordinate) -> usize
+) -> HashMap<Coordinate, Coordinate>
+where
+    F: Fn(Coordinate) -> usize,
 {
     let return_early = false;
     let origin_h_value = heuristic(origin);
@@ -234,29 +248,37 @@ where
 
     open.push(origin, Reverse(NodeData::new(origin_h_value)));
 
-    (_, closed) = 
-    fill_path_map(
-        open, 
-        closed, 
-        last_node, 
-        &neighbors, 
-        &destination, 
-        heuristic, 
-        return_early, 
+    (_, closed) = fill_path_map(
+        open,
+        closed,
+        last_node,
+        &neighbors,
+        &destination,
+        heuristic,
+        return_early,
         ignore_units,
-        ignore_doors, 
-        map, 
-        ecs
+        ignore_doors,
+        map,
+        ecs,
     );
 
     closed
         .into_iter()
-        .filter_map(|(coord, NodeData { distance, h_value, parent })| 
-            if let Some(parent) = parent {
-                Some((coord, parent - coord))
-            } else {
-                None
-            }
+        .filter_map(
+            |(
+                coord,
+                NodeData {
+                    distance,
+                    h_value,
+                    parent,
+                },
+            )| {
+                if let Some(parent) = parent {
+                    Some((coord, parent - coord))
+                } else {
+                    None
+                }
+            },
         )
         .collect()
 }

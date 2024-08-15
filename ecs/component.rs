@@ -1,7 +1,6 @@
 use std::borrow::BorrowMut;
 use std::collections::HashMap;
 use std::fmt::Debug;
-use std::vec;
 
 use self::attributes::Attributes;
 use self::inventory::Inventory;
@@ -34,7 +33,6 @@ pub enum Component {
     Image(IndexedData<ImageHandle>),
     Position(IndexedData<Coordinate>),
     Health(IndexedData<Health>),
-    Movement(IndexedData<Movement>),
     Turn(IndexedData<TurnTaker>),
     Collision(IndexedData<Collision>),
     LineOfSight(IndexedData<LoSBlocking>),
@@ -57,7 +55,6 @@ impl Component {
             Component::Image(data) => data.index.borrow_mut(),
             Component::Position(data) => data.index.borrow_mut(),
             Component::Health(data) => data.index.borrow_mut(),
-            Component::Movement(data) => data.index.borrow_mut(),
             Component::Turn(data) => data.index.borrow_mut(),
             Component::Collision(data) => data.index.borrow_mut(),
             Component::LineOfSight(data) => data.index.borrow_mut(),
@@ -81,7 +78,6 @@ impl Component {
             Component::Image(data) => data.index,
             Component::Position(data) => data.index,
             Component::Health(data) => data.index,
-            Component::Movement(data) => data.index,
             Component::Turn(data) => data.index,
             Component::Collision(data) => data.index,
             Component::LineOfSight(data) => data.index,
@@ -92,11 +88,9 @@ impl Component {
         }
     }
 
-
     pub fn is_of_type(&self, other: &ComponentType) -> bool {
         other.eq(&self.into())
     }
-
 }
 
 impl Diffable for Component {
@@ -106,9 +100,6 @@ impl Diffable for Component {
         match (self, other) {
             // Merge types
             (Self::Health(data), Self::Health(other_data)) => {
-                data.data.apply_diff(&other_data.data)
-            }
-            (Self::Movement(data), Self::Movement(other_data)) => {
                 data.data.apply_diff(&other_data.data)
             }
             (Self::Attributes(data), Self::Attributes(other_data)) => {
@@ -126,10 +117,11 @@ impl Diffable for Component {
             (Self::Image(data), Self::Image(other_data)) => data.data.apply_diff(&other_data.data),
             // Clone overwrite types
             (Self::Name(data), Self::Name(other_data)) => data.data = other_data.data.clone(),
-            // None here
+            (Self::Turn(data), Self::Turn(other_data)) => data.data = other_data.data.clone(),
             // Copy overwrite types
             (Self::Collision(data), Self::Collision(other_data)) => data.data = other_data.data,
             (Self::LineOfSight(data), Self::LineOfSight(other_data)) => data.data = other_data.data,
+
             (Self::BumpResponse(data), Self::BumpResponse(other_data)) => {
                 data.data = other_data.data
             }

@@ -1,21 +1,23 @@
 use std::cmp::Reverse;
-use std::default;
 
 use crate::ecs::component::attributes::Attributes;
+use crate::ecs::component::combat::Health;
 use crate::ecs::component::{combat, Component, ComponentType};
-use crate::ecs::system::{ComponentQuery, MonsterTurns, PlayerCheck, SystemManager, UnitCull};
+use crate::ecs::system::{
+    ComponentQuery, Exploration, MonsterTurns, PlayerCheck, SystemManager, UnitCull,
+};
 use crate::ecs::{component, take_component_from_refs, Delta, IndexedData, ECS};
 use crate::event::{propagate_event, InteractionEvent};
-use crate::{logger, los};
 use crate::map::mapbuilder::MapBuilder;
 use crate::map::{Coordinate, GameMap};
 use crate::MessageLog;
+use crate::{logger, los};
 
 /* TODOS:
-    performance
-        make it so only "awake" enemies take their turn
+   performance
+       make it so only "awake" enemies take their turn
 
- */
+*/
 
 pub struct Game {
     pub ecs: ECS,
@@ -35,6 +37,7 @@ impl Game {
 
         game.ecs.spawn_all_entities(&game.map);
         game.add_default_systems();
+        game.explore_first_room();
         game
     }
 
@@ -56,15 +59,16 @@ impl Game {
         let event = player_report.shoot;
         let distance = coord.distance(player_report.position.data) as usize;
         let range = event.attack.unwrap().range.unwrap();
-        let line_of_sight = los::line_of_sight(player_report.position.data, coord, &self.map, &self.ecs);
+        let line_of_sight =
+            los::line_of_sight(player_report.position.data, coord, &self.map, &self.ecs);
 
         if !line_of_sight {
             logger::log_message("Target is out of sight.");
-            return
+            return;
         }
         if distance > range {
             logger::log_message("Target is out of range.");
-            return
+            return;
         }
         self.propagate_and_apply_event(&event, target);
         self.end_turn();
@@ -74,8 +78,7 @@ impl Game {
         let player_id = self.ecs.get_player_id();
         let components = self.ecs.get_components_from_entity(player_id);
 
-        let (maybe_position, _) =
-            take_component_from_refs(ComponentType::Position, &components);
+        let (maybe_position, _) = take_component_from_refs(ComponentType::Position, &components);
         let position = match maybe_position {
             Some(Component::Position(data)) => data,
             _ => panic!("Player found without a position component."),
@@ -101,7 +104,7 @@ impl Game {
 
         let coord = player_report.position.data + direction;
         if !self.map.is_tile_passable(coord) {
-            return
+            return;
         }
 
         let event = player_report.bump;
@@ -117,16 +120,62 @@ impl Game {
         self.end_turn();
     }
 
+    pub fn close_doors_command(&mut self) {
+        let Some(player_position) = self.ecs.get_player_position() else {
+            return;
+        };
+
+        let adjacent = vec![
+            Coordinate { x: 1, y: 0 },
+            Coordinate { x: -1, y: 0 },
+            Coordinate { x: 0, y: 1 },
+            Coordinate { x: 0, y: -1 },
+        ];
+
+        let neighbors = adjacent.iter().map(|dir| player_position + *dir);
+
+        let doors: Vec<usize> = neighbors
+            .into_iter()
+            .map(|pos| self.ecs.get_all_entities_in_tile(pos))
+            .flatten()
+            .filter(|entity_id| {
+                self.ecs
+                    .entity_has_component(*entity_id, ComponentType::Door)
+            })
+            .collect();
+
+        // make the correct event
+        let event = &InteractionEvent {
+            event_type: crate::event::EventType::Bump,
+            attack: None,
+            payload: vec![]
+        };
+
+        for door in doors {
+            let delta = propagate_event(event, door, &self.ecs);
+            self.ecs.apply_changes(delta);
+        }
+        self.end_turn();
+    }
+
     fn make_new_map(&mut self, size_x: usize, size_y: usize, depth: usize) {
-        let new_map= MapBuilder::generate_new(size_x, size_y, depth);
+        let new_map = MapBuilder::generate_new(size_x, size_y, depth);
+        let mut new_ecs = ECS::new();
 
         let player_id = self.ecs.get_player_id();
-        let mut new_ecs = ECS::new();
         new_ecs.copy_entity_from_other(&self.ecs, player_id);
         new_ecs.spawn_all_entities(&new_map);
-        
+
         self.ecs = new_ecs;
         self.map = new_map;
+        self.update_systems();
+        self.explore_first_room();
+    }
+
+    fn explore_first_room(&mut self) {
+        if let Some(player_position) = self.ecs.get_player_position() {
+            self.map.explore_room(player_position);
+        }
     }
 
     pub fn descend_command(&mut self) {
@@ -142,54 +191,48 @@ impl Game {
         let id = self.ecs.get_player_id();
         let components = self.ecs.get_components_from_entity(id);
 
-        let (maybe_stats, components) = take_component_from_refs(ComponentType::Attributes, &components);
-        let (maybe_health, components) = take_component_from_refs(ComponentType::Health, &components);
+        let (maybe_stats, components) =
+            take_component_from_refs(ComponentType::Attributes, &components);
+        let (maybe_health, components) =
+            take_component_from_refs(ComponentType::Health, &components);
         if let (Some(Component::Attributes(stats)), Some(Component::Health(health))) =
             (maybe_stats, maybe_health)
         {
             let mut stat_change = IndexedData::<Attributes>::default();
             match stat {
                 0 => {
-                    stat_change = stats.make_change(
-                        Attributes {
-                            strength: amount as isize,
-                            ..Default::default()
-                        },
-                    );
+                    stat_change = stats.make_change(Attributes {
+                        strength: amount as isize,
+                        ..Default::default()
+                    });
                 }
                 1 => {
-                    stat_change = stats.make_change(
-                        Attributes {
-                            dexterity: amount as isize,
-                            ..Default::default()
-                        },
-                    );
-                }
-                2 => {
-                    stat_change = stats.make_change(
-                        Attributes {
-                            cunning: amount as isize,
-                            ..Default::default()
-                        },
-                    );
+                    stat_change = stats.make_change(Attributes {
+                        dexterity: amount as isize,
+                        ..Default::default()
+                    });
                 }
                 _ => {}
             }
 
-            let xp_change = stats.make_change(
-                Attributes {
-                    level: 1,
-                    xp: -stats.data.xp,
-                    level_pending: false,
-                    ..Default::default()
-                },
-            );
+            let xp_change = stats.make_change(Attributes {
+                level: 1,
+                xp: -stats.data.xp,
+                level_pending: false,
+                ..Default::default()
+            });
+
+            let health_increase = health.make_change(Health {
+                current: (health.data.max as f32 * 0.2) as isize,
+                max: (health.data.max as f32 * 0.2) as isize,
+            });
 
             let restore_health = health.make_change(health.data.get_health_reset_diff());
             let change_list = vec![
                 Delta::Change(Component::Attributes(stat_change)),
                 Delta::Change(Component::Attributes(xp_change)),
                 Delta::Change(Component::Health(restore_health)),
+                Delta::Change(Component::Health(health_increase)),
             ];
             self.ecs.apply_changes(change_list);
         }
@@ -228,6 +271,10 @@ impl Game {
             if let (Some(Component::Position(position)), Some(Component::Image(image))) =
                 (maybe_position, maybe_image)
             {
+                if !self.map.explored.borrow().contains(&position.data) {
+                    continue;
+                }
+
                 let (index, image, depth) = (
                     position.data.y as usize * self.map.width + position.data.x as usize, // TODO: get the correct index calculation
                     image.data.current.id,
@@ -243,8 +290,11 @@ impl Game {
         images
             .into_iter()
             .map(|mut img_vec| {
-                img_vec.sort_by_key(|vec|  Reverse(vec[1]));
-                img_vec.into_iter().filter_map(|vec| vec.first().copied()).collect()
+                img_vec.sort_by_key(|vec| Reverse(vec[1]));
+                img_vec
+                    .into_iter()
+                    .filter_map(|vec| vec.first().copied())
+                    .collect()
             })
             .collect()
     }
@@ -258,41 +308,42 @@ impl Game {
         self.map.depth as i32
     }
 
-    pub fn get_player_info(&self) -> 
-    (
-        String, // name
-        i32,    // level
-        i32,    // coins
-        i32,    // current xp
-        i32,    // level up xp
-        i32,    // current hp
-        i32,    // max hp
-        i32,    // strength
-        i32,    // dexterity
-        i32,    //cunning
-        [i32;2],// melee damage
-        f32,    // melee crit chance
-        [i32;2],// ranged damage
-        f32,    // ranged crit chance
+    pub fn get_player_info(
+        &self,
+    ) -> (
+        String,   // name
+        i32,      // level
+        i32,      // coins
+        i32,      // current xp
+        i32,      // level up xp
+        i32,      // current hp
+        i32,      // max hp
+        i32,      // strength
+        i32,      // dexterity
+        [i32; 2], // melee damage
+        f32,      // melee crit chance
+        [i32; 2], // ranged damage
+        f32,      // ranged crit chance
     ) {
         let report = match self.ecs.get_player_report() {
             Some(report) => report,
-            _ => return (
-                "None".to_string(), 
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                0,
-                [0,0],
-                0.0,
-                [0,0],
-                0.0,
-            )
+            _ => {
+                return (
+                    "None".to_string(),
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    0,
+                    [0, 0],
+                    0.0,
+                    [0, 0],
+                    0.0,
+                )
+            }
         };
 
         let name = report.name.unwrap().data;
@@ -300,9 +351,9 @@ impl Game {
         let stats = report.stats.unwrap().data;
         let items = report.items.unwrap().data;
 
-        let mut melee_damage = [0,0];
+        let mut melee_damage = [0, 0];
         let mut melee_crit = 0.0;
-        let mut ranged_damage = [0,0];
+        let mut ranged_damage = [0, 0];
         let mut ranged_crit = 0.0;
 
         let (melee, ranged) = self.ecs.get_player_attacks();
@@ -310,21 +361,20 @@ impl Game {
         if let Some(attack) = melee {
             let bonus_damage = combat::get_bonus_dmg(&stats, &attack);
             melee_damage = [
-                (attack.damage_base + bonus_damage) as i32, 
-                (attack.damage_base + bonus_damage + attack.damage_spread) as i32
+                (attack.damage_base + bonus_damage.0) as i32,
+                (attack.damage_base + bonus_damage.1 + attack.damage_spread) as i32,
             ];
-            melee_crit = combat::get_crit_chance(&stats) + attack.crit_chance_bonus; 
+            melee_crit = combat::BASE_CRIT_CHANCE + attack.crit_chance_bonus;
         }
 
         if let Some(attack) = ranged {
             let bonus_damage = combat::get_bonus_dmg(&stats, &attack);
             ranged_damage = [
-                (attack.damage_base + bonus_damage) as i32, 
-                (attack.damage_base + bonus_damage + attack.damage_spread) as i32
+                (attack.damage_base + bonus_damage.0) as i32,
+                (attack.damage_base + bonus_damage.1 + attack.damage_spread) as i32,
             ];
-            ranged_crit = combat::get_crit_chance(&stats) + attack.crit_chance_bonus; 
+            ranged_crit = combat::BASE_CRIT_CHANCE + attack.crit_chance_bonus;
         }
-        
 
         // frontend requires i32:s
         (
@@ -337,11 +387,10 @@ impl Game {
             health.max as i32,
             stats.strength as i32,
             stats.dexterity as i32,
-            stats.cunning as i32,
             melee_damage,
             melee_crit as f32,
             ranged_damage,
-            ranged_crit as f32
+            ranged_crit as f32,
         )
     }
 
@@ -349,10 +398,11 @@ impl Game {
         let components = &self
             .ecs
             .get_components_from_entity(self.ecs.get_player_id());
-        let (maybe_health, _components) = take_component_from_refs(ComponentType::Health, components);
+        let (maybe_health, _components) =
+            take_component_from_refs(ComponentType::Health, components);
         let health = match maybe_health {
             Some(Component::Health(data)) => data.data,
-            _ => panic!("Player has no health!"),
+            _ => return false,
         };
         health.current >= 0
     }
@@ -364,18 +414,27 @@ impl Game {
         let (stats, _) = take_component_from_refs(ComponentType::Attributes, components);
         let stats = match stats {
             Some(Component::Attributes(data)) => data.data,
-            _ => panic!(),
+            _ => return false,
         };
         stats.xp >= component::attributes::get_xp_to_next(&stats)
     }
 
     pub fn add_default_systems(&mut self) {
+        self.systems
+            .add_turn_system(Box::new(Exploration::default()));
         self.systems.add_turn_system(Box::new(UnitCull::default()));
-        self.systems.add_turn_system(Box::new(MonsterTurns::default()));
-        self.systems.add_turn_system(Box::new(PlayerCheck::default()));
+        self.systems
+            .add_turn_system(Box::new(PlayerCheck::default()));
+        self.systems
+            .add_turn_system(Box::new(MonsterTurns::default()));
     }
 
     pub fn run_turn_systems(&mut self) {
         self.systems.run_turn_systems(&mut self.ecs, &self.map);
+    }
+
+    pub fn update_systems(&mut self) {
+        self.systems.update_systems(&self.ecs, &self.map);
+
     }
 }

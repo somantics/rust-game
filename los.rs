@@ -3,17 +3,20 @@ use crate::{
     map::{Coordinate, GameMap},
 };
 
-pub fn line_of_sight(origin: Coordinate, destination: Coordinate, map: &GameMap, ecs: &ECS) -> bool {
+pub fn line_of_sight(
+    origin: Coordinate,
+    destination: Coordinate,
+    map: &GameMap,
+    ecs: &ECS,
+) -> bool {
     let full_line = linetrace(origin, destination);
     let line_between = &full_line[1..full_line.len() - 1];
     !los_block_on_line(line_between, map, ecs)
 }
 
 fn los_block_on_line(line: &[Coordinate], map: &GameMap, ecs: &ECS) -> bool {
-    line.iter().any(|point|  {
-        map.is_tile_los_blocking(*point) ||
-        ecs.is_los_blocked_by_entity(*point)
-    })
+    line.iter()
+        .any(|point| map.is_tile_los_blocking(*point) || ecs.is_los_blocked_by_entity(*point))
 }
 
 fn collision_on_line(line: &[Coordinate], map: &GameMap, ecs: &ECS) -> bool {

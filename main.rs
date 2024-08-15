@@ -1,21 +1,21 @@
+use std::fs::File;
 use std::io::prelude::*;
 use std::path::Path;
-use std::fs::File;
 
 use game::Game;
 use serde_json;
 use serde_json::Result;
 
-use map::{Coordinate, GameMap, GameMapSerializable};
 use logger::MessageLog;
 use logger::LOG;
+use map::{Coordinate, GameMap, GameMapSerializable};
 
 mod ecs;
 mod event;
 mod game;
+mod logger;
 mod los;
 mod map;
-mod logger;
 
 slint::include_modules!();
 
@@ -23,12 +23,12 @@ const GRID_WIDTH: usize = (16.0 * 2.0) as usize;
 const GRID_HEIGHT: usize = (9.0 * 2.0) as usize;
 const TILESET_SIZE: f32 = 32.0;
 
-
 fn main() {
     let game = Game::new(GRID_WIDTH, GRID_HEIGHT);
 
     let main_window = initialize_main_window();
     update_game_info(&game, &main_window);
+    main_window.invoke_display_intro_popup();
     update_tile_map(&game, &main_window);
     set_up_input(game, &main_window);
     main_window.run().unwrap();
@@ -59,6 +59,9 @@ fn set_up_input(mut game: Game, window: &MainWindow) {
             InputCommand::Descend => {
                 game.descend_command();
             }
+            InputCommand::CloseDoors => {
+                game.close_doors_command();
+            }
             InputCommand::Wait => {
                 game.wait_command();
             }
@@ -69,12 +72,13 @@ fn set_up_input(mut game: Game, window: &MainWindow) {
             InputCommand::Quit => {
                 close_window(&weak_window.unwrap());
             }
+            InputCommand::Restart => {
+                game = Game::new(GRID_WIDTH, GRID_HEIGHT);
+            }
             _ => {}
         }
         update_game_info(&game, &weak_window.unwrap());
-        LOG.with(|log| 
-            display_messages(&log, &weak_window.unwrap())
-        );
+        LOG.with(|log| display_messages(&log, &weak_window.unwrap()));
         display_popup(&game, &weak_window.unwrap());
         update_tile_map(&game, &weak_window.unwrap());
     });
@@ -101,16 +105,15 @@ fn close_window(window: &MainWindow) {
 
 fn update_game_info(game: &Game, window: &MainWindow) {
     let (
-        name, 
-        level, 
-        coins, 
-        xp_current, 
-        xp_goal, 
-        hp_curent, 
-        hp_max, 
-        strength, 
-        dexterity, 
-        cunning,
+        name,
+        level,
+        coins,
+        xp_current,
+        xp_goal,
+        hp_curent,
+        hp_max,
+        strength,
+        dexterity,
         melee_damage,
         melee_crit,
         ranged_damage,
@@ -129,7 +132,6 @@ fn update_game_info(game: &Game, window: &MainWindow) {
     window.set_player_health_max(hp_max);
     window.set_player_strength(strength);
     window.set_player_dexterity(dexterity);
-    window.set_player_cunning(cunning);
     window.set_player_melee_damage(melee_damage.into());
     window.set_player_melee_crit(melee_crit);
     window.set_player_ranged_damage(ranged_damage.into());
@@ -191,3 +193,12 @@ fn load_map(path: &Path) -> GameMap {
     GameMap::from_serializable(deserialized)
 }
 
+// Spell ideas
+
+//// best sneaky themed
+// invis
+// blink
+// far sight
+// telekinesis
+// sleep
+// damage shield

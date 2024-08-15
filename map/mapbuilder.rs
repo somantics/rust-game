@@ -1,9 +1,9 @@
-use std::collections::{HashMap, HashSet, VecDeque};
-
-use petgraph::algo;
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::visit::IntoNodeReferences;
+use petgraph::visit::{IntoNodeReferences, Visitable};
+use petgraph::{algo, Undirected};
 use rand::{thread_rng, Rng};
+use std::collections::{HashMap, HashSet, VecDeque};
+use std::iter::Cloned;
 
 use super::boxextends::{BoxExtends, Room};
 use super::Euclidian;
@@ -25,25 +25,27 @@ pub struct MapBuilder {
 
 impl MapBuilder {
     pub fn generate_new(size_x: usize, size_y: usize, depth: usize) -> GameMap {
-        let graph = MapBuilder::binary_space_partitioning(size_x, size_y, 4);
-        let graph = MapBuilder::make_rooms_from_bsp(&graph);
-        let graph = MapBuilder::prune_small_rooms(&graph, 5);
-        let graph = MapBuilder::make_connected_graph(&graph, 3);
-        let graph = MapBuilder::prune_edges(&graph, 4);
+        let mut graph: Graph<Room, (), Undirected>;
+        loop {
+            graph = MapBuilder::binary_space_partitioning(size_x, size_y, 4);
+            graph = MapBuilder::make_rooms_from_bsp(&graph);
+            graph = MapBuilder::prune_small_rooms(&graph, 5);
+            graph = MapBuilder::make_connected_graph(&graph, 3);
+            graph = MapBuilder::prune_edges(&graph, 4);
+
+            let islands = algo::connected_components(&graph);
+            if islands == 1 {
+                break;
+            }
+        }
 
         let map = MapBuilder::draw_rooms_to_map(&graph, size_x, size_y, depth);
-        // add quest enabled encounters
         let map = MapBuilder::flood_fill_spawn_tables(&map, 8, 25);
         let map = MapBuilder::add_doors_to_rooms(&map);
-
         map
     }
 
-    fn binary_space_partitioning(
-        size_x: usize,
-        size_y: usize,
-        max_depth: usize,
-    ) -> RoomGraph {
+    fn binary_space_partitioning(size_x: usize, size_y: usize, max_depth: usize) -> RoomGraph {
         // Recursive algorithm for generating a binary space partitioning on BoxExtends.
         // Allows overlapping walls.
         let mut graph = RoomGraph::new_undirected();
@@ -84,9 +86,7 @@ impl MapBuilder {
         MapBuilder::split_branch(branch_b, graph, current_depth + 1, max_depth);
     }
 
-    fn make_rooms_from_bsp(
-        bsp_tree: &RoomGraph,
-    ) -> RoomGraph {
+    fn make_rooms_from_bsp(bsp_tree: &RoomGraph) -> RoomGraph {
         // Generates rooms inside the partitioned areas. Returned as a new graph.
         let bsp_leaves = MapBuilder::leaves_from_bsp(&bsp_tree);
         let mut graph = Graph::<Room, (), petgraph::Undirected>::default();
@@ -104,22 +104,18 @@ impl MapBuilder {
         graph
     }
 
-    fn leaves_from_bsp<'a>(
-        graph: &'a RoomGraph,
-    ) -> impl Iterator<Item = NodeIndex> + 'a {
+    fn leaves_from_bsp<'a>(graph: &'a RoomGraph) -> impl Iterator<Item = NodeIndex> + 'a {
         graph
             .node_indices()
             .filter(|index| graph.neighbors_undirected(*index).count() == 1)
     }
 
-    fn make_connected_graph(
-        room_graph: &RoomGraph,
-        max_scan_distance: i32,
-    ) -> RoomGraph {
-        // Takes a graph of nodes w. no edges and supplies edges between geographic neighbors.
+    fn make_connected_graph(room_graph: &RoomGraph, max_scan_distance: i32) -> RoomGraph {
+        // Takes a graph of nodes, removes original edges and supplies edges between geographic neighbors.
 
         let mut new_graph = RoomGraph::default();
         new_graph.clone_from(room_graph);
+        new_graph.clear_edges();
 
         let mut unprocessed = room_graph.node_references(); // this moves room_graph
         let mut opened: Vec<(NodeIndex, &Room)> = vec![];
@@ -147,7 +143,7 @@ impl MapBuilder {
 
             // find neighbors using collision boxes to the top, bottom, right, left
             let collision_boxes: Vec<BoxExtends> =
-                BoxExtends::make_edge_vicinity_boxes(&current_area.extends, max_scan_distance);
+                BoxExtends::make_edge_vicinity_boxes(&current_area.extends, max_scan_distance, 2);
 
             let neighbors = unprocessed
                 .clone()
@@ -168,10 +164,7 @@ impl MapBuilder {
         new_graph
     }
 
-    fn prune_small_rooms(
-        graph: &RoomGraph,
-        threshold: i32,
-    ) -> RoomGraph {
+    fn prune_small_rooms(graph: &RoomGraph, threshold: i32) -> RoomGraph {
         // Rebuilds graph without rooms w. floor area less than the threshold.
         let mut pruned_graph = RoomGraph::default();
         let filtered_rooms = graph
@@ -186,10 +179,7 @@ impl MapBuilder {
         pruned_graph
     }
 
-    fn prune_edges(
-        graph: &RoomGraph,
-        edge_threshold: usize,
-    ) -> RoomGraph {
+    fn prune_edges(graph: &RoomGraph, edge_threshold: usize) -> RoomGraph {
         // Attempts to prune edges from rooms with edge_count over the threshold.
         // Tries to maintain connectivity throughout the graph.
         let mut pruned_graph = RoomGraph::default();
@@ -227,12 +217,7 @@ impl MapBuilder {
         pruned_graph
     }
 
-    fn draw_rooms_to_map(
-        graph: &RoomGraph,
-        size_x: usize,
-        size_y: usize,
-        depth: usize,
-    ) -> GameMap {
+    fn draw_rooms_to_map(graph: &RoomGraph, size_x: usize, size_y: usize, depth: usize) -> GameMap {
         let mut map = GameMap::create_empty(size_x, size_y);
         map.graph = graph.clone();
         map.depth = depth;
@@ -326,10 +311,8 @@ impl MapBuilder {
             };
 
             MapBuilder::draw_vertical_corridor(corridor_start, corridor_end, map);
-
             return;
         }
-
         // case overlap in y
         let a_y_range: HashSet<i32> =
             HashSet::from_iter(box_a.top_left.y + 1..box_a.bottom_right.y);
@@ -350,6 +333,12 @@ impl MapBuilder {
             };
 
             MapBuilder::draw_horizontal_corridor(corridor_start, corridor_end, map);
+        } else {
+            // println!("Corridor not drawn");
+            // println!("From Location: {}, {}", box_a.top_left.x, box_a.top_left.y);
+            // println!("From dimensions: {}, {}", box_a.bottom_right.x - box_a.top_left.x, box_a.bottom_right.y - box_a.top_left.y);
+            // println!("To Location: {}, {}", box_b.top_left.x, box_b.top_left.y);
+            // println!("To dimensions: {}, {}", box_b.bottom_right.x - box_b.top_left.x, box_b.bottom_right.y - box_b.top_left.y);
         }
     }
 
@@ -543,7 +532,7 @@ impl MapBuilder {
         fill_queue.push_front(start_index);
         while let Some(index) = fill_queue.pop_back() {
             visited.insert(index);
-            
+
             let unvisited_neighbors = new_graph
                 .neighbors(index)
                 .filter_map(|idx| (!visited.contains(&idx)).then(move || idx));
@@ -556,61 +545,17 @@ impl MapBuilder {
             if index == start_index {
                 spawn_table.insert("Player", (1, 1));
             } else if new_graph[index].extends.get_inner_area() <= lower_size_threshold {
-                // SMALL ROOMS
-                let room_templates = vec![
-                    // Doggo scavenger rooms
-                    vec![("Doggo", (1, 1)), ("Corpse", (0, 1))],
-                    // Skelly room
-                    vec![("Pewpewpet", (1, 2))],
-                    // Empty room
-                    vec![("Corpse", (0, 1))],
-                ];
-                let template_id = thread_rng().gen_range(0..room_templates.len());
-                for (name, range) in &room_templates[template_id] {
-                    spawn_table.insert(name, *range);
-                }
+                spawn_table = get_spawn_table(SMALL_ROOMS, map.depth);
             } else if new_graph[index].extends.get_inner_area() >= upper_size_threshold {
-                // HUGE ROOMS
-                let room_templates = vec![
-                    // Animal heavy room
-                    vec![("Heavy", (1, 1)), ("Doggo", (1, 2)), ("Corpse", (1, 3))],
-                    // Big Cultist room
-                    vec![
-                        ("Pewpew", (1, 2)),
-                        ("Pewpewpet", (2, 3)),
-                        ("Corpse", (1, 2)),
-                        ("Chest", (1, 2)),
-                    ],
-                ];
-                let template_id = thread_rng().gen_range(0..room_templates.len());
-                for (name, range) in &room_templates[template_id] {
-                    spawn_table.insert(name, *range);
-                }
+                spawn_table = get_spawn_table(HUGE_ROOMS, map.depth);
             } else {
-                // GENERIC TEMPLATES
-                let room_templates = vec![
-                    // Heavy Animal room
-                    vec![("Heavy", (1, 1)), ("Corpse", (2, 3))],
-                    // Doggo Animal room
-                    vec![("Doggo", (1, 3)), ("Chest", (0, 1))],
-                    // Medium cultist room
-                    vec![
-                        ("Pewpewpet", (1, 2)), 
-                        ("Pewpew", (0, 1)), 
-                        ("Chest", (0, 1))],
-                    // Empty room
-                    vec![("Chest", (1, 1)), ("Corpse", (0, 1))],
-                ];
-                let template_id = thread_rng().gen_range(0..room_templates.len());
-                for (name, range) in &room_templates[template_id] {
-                    spawn_table.insert(name, *range);
-                }
+                spawn_table = get_spawn_table(GENERIC_ROOMS, map.depth);
             }
 
             if fill_queue.is_empty() {
                 spawn_table.insert("StairsDown", (1, 1));
             }
-            
+
             new_graph[index] = Room {
                 spawn_table: Some(spawn_table),
                 ..new_graph[index].clone()
@@ -623,3 +568,247 @@ impl MapBuilder {
         }
     }
 }
+
+fn get_spawn_table<const W: usize, const H: usize>(
+    templates: [RoomTemplate<W>; H],
+    depth: usize,
+) -> HashMap<&'static str, (usize, usize)> {
+    let mut spawn_table: HashMap<&'static str, (usize, usize)> = HashMap::new();
+    let eligible_tables: Vec<RoomTemplate<W>> = templates
+        .iter()
+        .filter_map(|template| {
+            if template.depth_requirement <= depth {
+                Some(*template)
+            } else {
+                None
+            }
+        })
+        .collect();
+    let template_id = thread_rng().gen_range(0..eligible_tables.len());
+    for SpawnEntry(name, range) in &eligible_tables[template_id] {
+        spawn_table.insert(name, range);
+    }
+    spawn_table
+}
+
+#[derive(Debug, Clone, Copy, Default)]
+struct SpawnEntry(&'static str, (usize, usize));
+
+#[derive(Debug, Clone, Copy)]
+struct RoomTemplate<const C: usize> {
+    spawn_entries: [SpawnEntry; C],
+    depth_requirement: usize,
+}
+
+impl<const C: usize> RoomTemplate<C> {
+    const fn new(spawn_entries: [SpawnEntry; C], depth_requirement: usize) -> Self {
+        Self {
+            spawn_entries,
+            depth_requirement,
+        }
+    }
+
+    fn from_smaller<const D: usize>(other: &RoomTemplate<D>) -> Self {
+        assert!(C > D);
+        let mut new_spawn_entries = [SpawnEntry::default(); C];
+        for (empty, old) in new_spawn_entries.iter_mut().zip(other.spawn_entries.iter()) {
+            *empty = *old;
+        }
+        Self {
+            spawn_entries: new_spawn_entries,
+            depth_requirement: other.depth_requirement,
+        }
+    }
+}
+
+impl<const C: usize> Default for RoomTemplate<C> {
+    fn default() -> Self {
+        RoomTemplate {
+            spawn_entries: [SpawnEntry::default(); C],
+            depth_requirement: usize::default(),
+        }
+    }
+}
+
+impl<const C: usize> IntoIterator for RoomTemplate<C> {
+    type Item = SpawnEntry;
+    type IntoIter = std::array::IntoIter<SpawnEntry, C>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.spawn_entries.into_iter()
+    }
+}
+
+impl<const C: usize> IntoIterator for &RoomTemplate<C> {
+    type Item = SpawnEntry;
+    type IntoIter = std::array::IntoIter<SpawnEntry, C>;
+    fn into_iter(self) -> Self::IntoIter {
+        self.spawn_entries.into_iter()
+    }
+}
+
+const SMALL_ROOMS: [RoomTemplate<2>; 6] = [
+    RoomTemplate::new(
+        [
+            // Doggo room
+            SpawnEntry("Doggo", (1, 1)),
+            SpawnEntry("Corpse", (0, 1)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Skelly room
+            SpawnEntry("Pewpewpet", (1, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // empty room
+            SpawnEntry("Corpse", (0, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // More skelly room
+            SpawnEntry("Pewpewpet", (1, 2)),
+            SpawnEntry("Corpse", (0, 1)),
+        ],
+        2,
+    ),
+    RoomTemplate::new(
+        [
+            // Pewpew in a small room
+            SpawnEntry("Pewpew", (1, 1)),
+            SpawnEntry("Chest", (0, 1)),
+        ],
+        4,
+    ),
+    RoomTemplate::new(
+        [
+            // Heavy room can now be in small room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Corpse", (1, 3)),
+        ],
+        5,
+    ),
+];
+
+const GENERIC_ROOMS: [RoomTemplate<4>; 6] = [
+    RoomTemplate::new(
+        [
+            // DOGGO room
+            SpawnEntry("Doggo", (1, 2)),
+            SpawnEntry("Corpse", (0, 2)),
+            SpawnEntry("Gold", (0, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Generic skelly room
+            SpawnEntry("Pewpewpet", (1, 2)),
+            SpawnEntry("Corpse", (0, 1)),
+            SpawnEntry("Gold", (0, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Empty chest room
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Corpse", (0, 1)),
+            SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        2,
+    ),
+    RoomTemplate::new(
+        [
+            // Single heavy room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Corpse", (2, 3)),
+            SpawnEntry("Gold", (0, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        2,
+    ),
+    RoomTemplate::new(
+        [
+            // Medium cultist room
+            SpawnEntry("Pewpewpet", (1, 2)),
+            SpawnEntry("Pewpew", (0, 1)),
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Gold", (0, 1)),
+        ],
+        3,
+    ),
+    RoomTemplate::new(
+        [
+            // Heavy room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Corpse", (2, 3)),
+            SpawnEntry("Gold", (0, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        3,
+    ),
+];
+
+const HUGE_ROOMS: [RoomTemplate<4>; 5] = [
+    RoomTemplate::new(
+        [
+            // DOGGO room
+            SpawnEntry("Doggo", (2, 3)),
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Corpse", (1, 2)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Big cultist room
+            SpawnEntry("Pewpew", (1, 1)),
+            SpawnEntry("Pewpewpet", (2, 3)),
+            SpawnEntry("Corpse", (1, 2)),
+            SpawnEntry("Chest", (1, 2)),
+        ],
+        2,
+    ),
+    RoomTemplate::new(
+        [
+            // Animal heavy room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Doggo", (1, 2)),
+            SpawnEntry("Corpse", (1, 3)),
+            SpawnEntry("Gold", (0, 1)),
+        ],
+        4,
+    ),
+    RoomTemplate::new(
+        [
+            // Double heavy animal room
+            SpawnEntry("Heavy", (2, 2)),
+            SpawnEntry("Doggo", (0, 1)),
+            SpawnEntry("Corpse", (1, 3)),
+            SpawnEntry("", (0, 0)),
+        ],
+        6,
+    ),
+    RoomTemplate::new(
+        [
+            // Double cultist room
+            SpawnEntry("Pewpew", (2, 3)),
+            SpawnEntry("Pewpewpet", (1, 3)),
+            SpawnEntry("Corpse", (1, 2)),
+            SpawnEntry("Chest", (2, 2)),
+        ],
+        5,
+    ),
+];
