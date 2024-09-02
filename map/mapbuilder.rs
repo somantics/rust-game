@@ -1,15 +1,15 @@
 use petgraph::graph::{Graph, NodeIndex};
-use petgraph::visit::{IntoNodeReferences, Visitable};
+use petgraph::visit::IntoNodeReferences;
 use petgraph::{algo, Undirected};
 use rand::{thread_rng, Rng};
 use std::collections::{HashMap, HashSet, VecDeque};
-use std::iter::Cloned;
 
-use super::boxextends::{BoxExtends, Room};
-use super::Euclidian;
 use crate::{
+    map::boxextends::{BoxExtends, Room},
+    map::gamemap::GameMap,
     map::tile::GameTile,
-    map::{Coordinate, GameMap},
+    map::utils::Coordinate,
+    map::utils::Euclidian,
 };
 
 pub type RoomGraph = Graph<Room, (), petgraph::Undirected>;
@@ -24,11 +24,12 @@ pub struct MapBuilder {
 }
 
 impl MapBuilder {
-    pub fn generate_new(size_x: usize, size_y: usize, depth: usize) -> GameMap {
-        let mut graph: Graph<Room, (), Undirected>;
+    pub fn generate_new(size_x: usize, size_y: usize, depth: usize) -> (GameMap, RoomGraph) {
+        let mut bsp: RoomGraph;
+        let mut graph: RoomGraph;
         loop {
-            graph = MapBuilder::binary_space_partitioning(size_x, size_y, 4);
-            graph = MapBuilder::make_rooms_from_bsp(&graph);
+            bsp = MapBuilder::binary_space_partitioning(size_x, size_y, 4);
+            graph = MapBuilder::make_rooms_from_bsp(&bsp);
             graph = MapBuilder::prune_small_rooms(&graph, 5);
             graph = MapBuilder::make_connected_graph(&graph, 3);
             graph = MapBuilder::prune_edges(&graph, 4);
@@ -42,7 +43,7 @@ impl MapBuilder {
         let map = MapBuilder::draw_rooms_to_map(&graph, size_x, size_y, depth);
         let map = MapBuilder::flood_fill_spawn_tables(&map, 8, 25);
         let map = MapBuilder::add_doors_to_rooms(&map);
-        map
+        (map, bsp)
     }
 
     fn binary_space_partitioning(size_x: usize, size_y: usize, max_depth: usize) -> RoomGraph {
@@ -454,13 +455,13 @@ impl MapBuilder {
         if !map.is_tile_passable(coord) {
             return false;
         }
-        if !map.is_tile_passable(coord + Coordinate { x: 0, y: 1 })
-            && !map.is_tile_passable(coord + Coordinate { x: 0, y: -1 })
+        if map.is_tile_passable(coord + Coordinate { x: 0, y: 1 })
+            && map.is_tile_passable(coord + Coordinate { x: 0, y: -1 })
         {
             return true;
         }
-        if !map.is_tile_passable(coord + Coordinate { x: 1, y: 0 })
-            && !map.is_tile_passable(coord + Coordinate { x: -1, y: 0 })
+        if map.is_tile_passable(coord + Coordinate { x: 1, y: 0 })
+            && map.is_tile_passable(coord + Coordinate { x: -1, y: 0 })
         {
             return true;
         }
@@ -577,7 +578,7 @@ fn get_spawn_table<const W: usize, const H: usize>(
     let eligible_tables: Vec<RoomTemplate<W>> = templates
         .iter()
         .filter_map(|template| {
-            if template.depth_requirement <= depth {
+            if template.depth_requirement <= depth  {
                 Some(*template)
             } else {
                 None
@@ -593,6 +594,7 @@ fn get_spawn_table<const W: usize, const H: usize>(
 
 #[derive(Debug, Clone, Copy, Default)]
 struct SpawnEntry(&'static str, (usize, usize));
+
 
 #[derive(Debug, Clone, Copy)]
 struct RoomTemplate<const C: usize> {
@@ -646,88 +648,173 @@ impl<const C: usize> IntoIterator for &RoomTemplate<C> {
     }
 }
 
-const SMALL_ROOMS: [RoomTemplate<2>; 6] = [
+const SMALL_ROOMS: [RoomTemplate<3>; 9] = [
     RoomTemplate::new(
         [
-            // Doggo room
+            // Stray doggo
             SpawnEntry("Doggo", (1, 1)),
             SpawnEntry("Corpse", (0, 1)),
+            SpawnEntry("", (0, 1)), 
         ],
         1,
     ),
     RoomTemplate::new(
         [
-            // Skelly room
+            // Stray bat
+            SpawnEntry("Bat", (1, 1)),
+            SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // spike  room
+            SpawnEntry("", (0, 1)),
+            SpawnEntry("Corpse", (0, 2)),
+            SpawnEntry("Spikes", (2, 3)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Mini treasure room
+            SpawnEntry("Rat", (0, 1)),
+            SpawnEntry("Gold", (0, 2)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+
+    RoomTemplate::new(
+        [
+            // Small skelly room
             SpawnEntry("Pewpewpet", (1, 1)),
-            SpawnEntry("", (0, 0)),
-        ],
-        1,
-    ),
-    RoomTemplate::new(
-        [
-            // empty room
             SpawnEntry("Corpse", (0, 1)),
-            SpawnEntry("", (0, 0)),
-        ],
-        1,
-    ),
-    RoomTemplate::new(
-        [
-            // More skelly room
-            SpawnEntry("Pewpewpet", (1, 2)),
-            SpawnEntry("Corpse", (0, 1)),
+            SpawnEntry("", (0, 1)),
         ],
         2,
+    ),
+
+    RoomTemplate::new(
+        [
+            // Small treasure room
+            SpawnEntry("Pewpewpet", (1, 2)),
+            SpawnEntry("Gold", (1, 2)),
+            SpawnEntry("", (0, 0)),
+        ],
+        3,
+    ),
+    RoomTemplate::new(
+        [
+            // spikey treasure room
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Corpse", (0, 2)),
+            SpawnEntry("Spikes", (2, 3)),
+        ],
+        3,
+    ),
+
+    RoomTemplate::new(
+        [
+            // Heavy room can now be in small room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Corpse", (1, 3)),
+            SpawnEntry("", (0, 0)),
+        ],
+        5,
     ),
     RoomTemplate::new(
         [
             // Pewpew in a small room
             SpawnEntry("Pewpew", (1, 1)),
             SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Gold", (1, 2)),
         ],
-        4,
-    ),
-    RoomTemplate::new(
-        [
-            // Heavy room can now be in small room
-            SpawnEntry("Heavy", (1, 1)),
-            SpawnEntry("Corpse", (1, 3)),
-        ],
-        5,
+        6,
     ),
 ];
 
-const GENERIC_ROOMS: [RoomTemplate<4>; 6] = [
+const GENERIC_ROOMS: [RoomTemplate<5>; 12] = [
     RoomTemplate::new(
         [
-            // DOGGO room
+            // DOGGO hunting party
             SpawnEntry("Doggo", (1, 2)),
-            SpawnEntry("Corpse", (0, 2)),
-            SpawnEntry("Gold", (0, 1)),
+            SpawnEntry("Corpse", (0, 3)),
+            SpawnEntry("", (0, 0)), 
+            SpawnEntry("", (0, 0)),
             SpawnEntry("", (0, 0)),
         ],
         1,
     ),
+    RoomTemplate::new(
+        [
+            // Bat room
+            SpawnEntry("Bat", (1, 2)),
+            SpawnEntry("Gold", (0, 2)),
+            SpawnEntry("", (0, 0)), 
+            SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Treasure room
+            SpawnEntry("Corpse", (1, 2)),
+            SpawnEntry("Gold", (0, 3)),
+            SpawnEntry("Rat", (0, 1)),
+            SpawnEntry("", (0, 0)), 
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // DOGGO hunting party
+            SpawnEntry("Doggo", (1, 2)),
+            SpawnEntry("Corpse", (1, 1)),
+            SpawnEntry("Gold", (1, 2)), 
+            SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+
     RoomTemplate::new(
         [
             // Generic skelly room
-            SpawnEntry("Pewpewpet", (1, 2)),
-            SpawnEntry("Corpse", (0, 1)),
-            SpawnEntry("Gold", (0, 1)),
-            SpawnEntry("", (0, 0)),
-        ],
-        1,
-    ),
-    RoomTemplate::new(
-        [
-            // Empty chest room
-            SpawnEntry("Chest", (0, 1)),
-            SpawnEntry("Corpse", (0, 1)),
-            SpawnEntry("", (0, 0)),
+            SpawnEntry("Pewpewpet", (1, 1)),
+            SpawnEntry("Corpse", (0, 2)),
+            SpawnEntry("Gold", (1, 2)),
+            SpawnEntry("Critters", (0, 1)),
             SpawnEntry("", (0, 0)),
         ],
         2,
     ),
+    RoomTemplate::new(
+        [
+            // Medium spikes
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Corpse", (0, 2)),
+            SpawnEntry("Spikes", (3, 6)),
+            SpawnEntry("Pewpewpet", (1, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        2,
+    ),
+    RoomTemplate::new(
+        [
+            // Medium acid
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Fungus", (0, 2)),
+            SpawnEntry("Acid pool", (1, 3)),
+            SpawnEntry("Corpse", (0, 3)),
+            SpawnEntry("Pewpewpet", (0, 1)),
+        ],
+        2,
+    ),
+
     RoomTemplate::new(
         [
             // Single heavy room
@@ -735,42 +822,118 @@ const GENERIC_ROOMS: [RoomTemplate<4>; 6] = [
             SpawnEntry("Corpse", (2, 3)),
             SpawnEntry("Gold", (0, 1)),
             SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        3,
+    ),
+    RoomTemplate::new(
+        [
+            // Spiky bat treasure room
+            SpawnEntry("Chest", (0, 2)),
+            SpawnEntry("Gold", (0, 2)),
+            SpawnEntry("Spikes", (4, 6)), 
+            SpawnEntry("Bat", (2, 4)),
+            SpawnEntry("", (0, 0)),
+        ],
+        3,
+    ),
+
+    RoomTemplate::new(
+        [
+            // Medium cultist room
+            SpawnEntry("Pewpewpet", (1, 2)),
+            SpawnEntry("Pewpew", (1, 1)),
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Corpse", (0, 3)),
+            SpawnEntry("", (0, 0)),
+        ],
+        4,
+    ),
+    RoomTemplate::new(
+        [
+            // Heavy king room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Corpse", (1, 2)),
+            SpawnEntry("Doggo", (1, 3)),
+            SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        4,
+    ),
+
+    RoomTemplate::new(
+        [
+            // Medium cultist room
+            SpawnEntry("Mushroom", (1, 2)),
+            SpawnEntry("Pewpew", (1, 1)),
+            SpawnEntry("Chest", (1, 1)),
+            SpawnEntry("Acid pool", (1, 3)),
+            SpawnEntry("Corpse", (0, 2)),
+        ],
+        4,
+    ),
+];
+
+const HUGE_ROOMS: [RoomTemplate<5>; 8] = [
+    RoomTemplate::new(
+        [
+            // Huge Bat room
+            SpawnEntry("Bat", (2, 4)),
+            SpawnEntry("Rat", (0, 1)),
+            SpawnEntry("Gold", (1, 4)),
+            SpawnEntry("", (0, 0)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+    RoomTemplate::new(
+        [
+            // Spikes   room
+            SpawnEntry("Spikes", (4, 7)),
+            SpawnEntry("Doggo", (0, 2)),
+            SpawnEntry("Corpse", (1, 3)),
+            SpawnEntry("Chest", (1, 1)),
+            SpawnEntry("", (0, 0)),
+        ],
+        1,
+    ),
+
+
+    RoomTemplate::new(
+        [
+            // DOGGO DEN room
+            SpawnEntry("Doggo", (2, 4)),
+            SpawnEntry("Chest", (0, 1)),
+            SpawnEntry("Corpse", (1, 3)),
+            SpawnEntry("", (0, 0)), 
+            SpawnEntry("", (0, 0)),
         ],
         2,
     ),
     RoomTemplate::new(
         [
-            // Medium cultist room
-            SpawnEntry("Pewpewpet", (1, 2)),
-            SpawnEntry("Pewpew", (0, 1)),
-            SpawnEntry("Chest", (0, 1)),
-            SpawnEntry("Gold", (0, 1)),
+            // Skelle treasure room
+            SpawnEntry("Pewpewpet", (2, 3)),
+            SpawnEntry("Chest", (1, 1)),
+            SpawnEntry("Gold", (1, 3)),
+            SpawnEntry("", (0, 0)), 
+            SpawnEntry("Critters", (0, 1)),
         ],
-        3,
+        2,
     ),
-    RoomTemplate::new(
-        [
-            // Heavy room
-            SpawnEntry("Heavy", (1, 1)),
-            SpawnEntry("Corpse", (2, 3)),
-            SpawnEntry("Gold", (0, 1)),
-            SpawnEntry("", (0, 0)),
-        ],
-        3,
-    ),
-];
 
-const HUGE_ROOMS: [RoomTemplate<4>; 5] = [
     RoomTemplate::new(
         [
-            // DOGGO room
-            SpawnEntry("Doggo", (2, 3)),
-            SpawnEntry("Chest", (0, 1)),
-            SpawnEntry("Corpse", (1, 2)),
+            // Animal heavy room
+            SpawnEntry("Heavy", (1, 1)),
+            SpawnEntry("Doggo", (1, 3)),
+            SpawnEntry("Corpse", (2, 4)),
+            SpawnEntry("Bat", (0, 1)),
             SpawnEntry("", (0, 0)),
         ],
-        1,
+        3,
     ),
+
     RoomTemplate::new(
         [
             // Big cultist room
@@ -778,37 +941,32 @@ const HUGE_ROOMS: [RoomTemplate<4>; 5] = [
             SpawnEntry("Pewpewpet", (2, 3)),
             SpawnEntry("Corpse", (1, 2)),
             SpawnEntry("Chest", (1, 2)),
-        ],
-        2,
-    ),
-    RoomTemplate::new(
-        [
-            // Animal heavy room
-            SpawnEntry("Heavy", (1, 1)),
-            SpawnEntry("Doggo", (1, 2)),
-            SpawnEntry("Corpse", (1, 3)),
-            SpawnEntry("Gold", (0, 1)),
+            SpawnEntry("", (0, 2)),
         ],
         4,
     ),
+
     RoomTemplate::new(
         [
             // Double heavy animal room
             SpawnEntry("Heavy", (2, 2)),
             SpawnEntry("Doggo", (0, 1)),
             SpawnEntry("Corpse", (1, 3)),
+            SpawnEntry("Critter", (0, 1)),
             SpawnEntry("", (0, 0)),
         ],
         6,
     ),
+
     RoomTemplate::new(
         [
             // Double cultist room
             SpawnEntry("Pewpew", (2, 3)),
             SpawnEntry("Pewpewpet", (1, 3)),
-            SpawnEntry("Corpse", (1, 2)),
+            SpawnEntry("Corpse", (1, 3)),
             SpawnEntry("Chest", (2, 2)),
+            SpawnEntry("", (0, 0)),
         ],
-        5,
+        7,
     ),
 ];

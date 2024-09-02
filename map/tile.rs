@@ -1,7 +1,7 @@
 use ::phf::{phf_map, Map};
 use serde::{Deserialize, Serialize};
 
-use crate::ecs::component::ImageData;
+use crate::game::components::core::ImageData;
 
 pub static TILE_REGISTRY: Map<u32, &'static RootTile> = phf_map!(
   0u32 => &RootTile {image: ImageData { id: 0, depth: 10 }, passable: true, los_blocking: false},
@@ -60,7 +60,7 @@ impl GameTile {
 }
 
 // Represent floors, walls, pillars. Features part of a tile that is drawn first and is non-interactable.
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Clone)]
 pub struct RootTile {
     pub image: ImageData,
     passable: bool,

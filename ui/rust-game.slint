@@ -1,11 +1,11 @@
 import { VerticalBox, HorizontalBox, Button, ProgressIndicator } from "std-widgets.slint";
-global ImageIds {
+global TileImages {
   in-out property <[image]> images_by_index: [
       @image-url("icons/tile008.png"), // 0:
       @image-url("icons/tile011.png"),
       @image-url("icons/tile017.png"),
       @image-url("icons/tile148.png"),
-      @image-url("icons/tile031.png"), // none found or starry space
+      @image-url("icons/tile031.png"), // starry space
       @image-url("icons/tile035.png"), // 5:
       @image-url("icons/tile165.png"), // weird doggo
       @image-url("icons/tile032.png"), // closed chest
@@ -18,11 +18,40 @@ global ImageIds {
       @image-url("icons/tile130.png"), // random corpse
       @image-url("icons/tile121.png"), // 15: gold pile
       @image-url("icons/tile013.png"), // stairs down
+      @image-url("icons/tile027.png"), // spikes
+      @image-url("icons/simplefire.png"), // open flame
+      @image-url("icons/burning.png"), // sparks
+      @image-url("icons/tile152.png"), // 20 little rat
+      @image-url("icons/tile153.png"), // little bugs
+      @image-url("icons/tile160.png"), // big mushrooms
+      @image-url("icons/tile163.png"), // bat
+      @image-url("icons/tile030.png"), // acid
   ];
 }
 
+global IconImages {
+  in-out property <[image]> images_by_index: [
+      @image-url("icons/icon27.png"),           // 0: invis
+      @image-url("icons/icon27b.png"),          //
+      @image-url("icons/paladin/Icon12.png"),   // levitate
+      @image-url("icons/paladin/Icon12b.png"),  //
+      @image-url("icons/paladin/Icon2.png"),    // heal
+      @image-url("icons/paladin/Icon2b.png"),   // 5:
+      @image-url("icons/paladin/Icon8.png"),    // stoneskin
+      @image-url("icons/paladin/Icon8b.png"),   // 
+      @image-url("icons/paladin/Icon35.png"),   // resist fire
+      @image-url("icons/paladin/Icon35b.png"),  // 
+      @image-url("icons/icon21.png"),   // 10: flaming fist
+      @image-url("icons/icon21b.png"),  // 
+      @image-url("icons/icon31.png"),   // weaken armor
+      @image-url("icons/icon31b.png"),  // 
+      
+  ];
+}
+
+
 export enum InputCommand { 
-  Direction, Position, Shoot, Wait, Quit, Restart, LevelUp, Descend, CloseDoors, Start,
+  Direction, Position, Shoot, Wait, Quit, Restart, LevelUp, Descend, CloseDoors, Start, Spell,
  } 
 
 struct TileGraphics {
@@ -46,23 +75,23 @@ component MapTile inherits Rectangle {
   height: size;
 
   for id[i] in images.image_ids : Image {
-      source: ImageIds.images_by_index[id];
+      source: TileImages.images_by_index[id];
       width: parent.width;
       height: parent.height;
       z: 0;
   }
 
   TouchArea {
-      pointer-event(PointerEvent) => {
-        if (PointerEvent.kind != PointerEventKind.down) {
-          return;
-        }
-        if (PointerEvent.button == PointerEventButton.right) {
-          root.right-clicked();
-        } else  if (PointerEvent.button == PointerEventButton.left) {
-          root.clicked();
-        }
+    pointer-event(PointerEvent) => {
+      if (PointerEvent.kind != PointerEventKind.down) {
+        return;
       }
+      if (PointerEvent.button == PointerEventButton.right) {
+        root.right-clicked();
+      } else  if (PointerEvent.button == PointerEventButton.left) {
+        root.clicked();
+      }
+    }
   }
 }
 
@@ -70,10 +99,12 @@ component GameMap inherits Rectangle {
   in property <int> grid_width;
   in property <int> grid_height;
   in property <length> tile_size;
+  in property <bool> select-mode;
 
   in property <[TileGraphics]> memory_tiles;
 
   callback received_input(InputCommand, int, int);
+  
 
   x: 0;
   y: 0;
@@ -88,13 +119,89 @@ component GameMap inherits Rectangle {
     images: tile;
 
     clicked => {
-      root.received-input(InputCommand.Position, self.grid_x, self.grid_y);
+      root.received-input(InputCommand.Position, self.grid_x, self.grid_y)
     }
     right-clicked => {
       root.received-input(InputCommand.Shoot, self.grid_x, self.grid_y);
     }
   }
+  
+  
 }
+
+component SpellIcon inherits Rectangle {
+  callback clicked();
+  in property <int> image;
+  in property <int> spell_pos;
+  in property <string> spell_name;
+
+  in property <int> grid_x;
+  in property <int> grid_y;
+
+  in property <length> size;
+  in property <color> text-color;
+  property <length> my-padding: 8px;
+
+  x: grid_x * size + grid_x * my-padding;
+  y: grid_y * size + grid_y * my-padding * 2;
+  width: size;
+  height: size + my-padding;
+
+  Image {
+      source: IconImages.images_by_index[image];
+      width: parent.width;
+      height: parent.height - my-padding;
+
+      TouchArea {
+        
+        pointer-event(PointerEvent) => {
+          if (PointerEvent.kind != PointerEventKind.down) {
+            return;
+          }
+          if (PointerEvent.button == PointerEventButton.left) {
+            root.clicked();
+          }
+        }
+    }
+  }
+  
+  Text {
+    width: parent.width + my-padding;
+    height: my-padding * 2;
+    x: -my-padding/2;
+    y: size + self.height/4;
+    text: spell_name;
+    color: text-color;
+    horizontal-alignment: center;
+  }
+  
+}
+
+component SpellInventory inherits Rectangle {
+  in property <int> grid_width;
+  in property <length> tile_size;
+
+  in property <[int]> spell_icons;
+  in property <[string]> spell_names;
+
+  callback received_input(InputCommand, int, int);
+
+  for image[i] in spell_icons : SpellIcon {
+    grid_x: mod(i, grid_width);
+    grid_y: floor(i / grid_width);
+    size: tile_size;
+
+    image: image;
+    spell_pos: i;
+    spell_name: spell_names[i];
+    text-color: #B8CD55;
+
+    clicked => {
+      root.received-input(InputCommand.Spell, self.spell_pos, 0);
+    }
+  }
+}
+
 
 component StatsDisplay inherits Rectangle {
   in property <string> character-name;
@@ -113,6 +220,10 @@ component StatsDisplay inherits Rectangle {
   in property <int> ranged-max-damage;
   in property <float> melee-crit-chance;
   in property <float> ranged-crit-chance;
+  in property <[int]> spell_icons;
+  in property <[string]> spell_names;
+  
+  callback received_input(InputCommand, int, int);
 
   VerticalLayout {
     spacing: 4px;
@@ -273,10 +384,22 @@ component StatsDisplay inherits Rectangle {
         text: "Crit chance: " + ranged-crit-chance;
       }
     }
+    Rectangle {height: 5%; }
+    SpellInventory {
+      tile-size: 48px;
+      grid_width: 4;
+      spell_icons: root.spell_icons;
+      spell_names: root.spell_names;
+
+      received_input(command, x, y,) => {
+        root.received_input(command, x, y);
+      }
+    }
     // Empty space below
-    Rectangle {}
+    Rectangle {height: 5%; }
   }
 }
+
 
 component TextLog inherits Rectangle {
 
@@ -301,6 +424,7 @@ component TextLog inherits Rectangle {
 }
 
 component PopUpBox inherits Rectangle {
+  in property <TextHorizontalAlignment> text-alignment;
   in property <string> text;
   in property <length> text-box-height;
 
@@ -310,17 +434,18 @@ component PopUpBox inherits Rectangle {
   border-width: 4px;
 
   text_box := Text {
-    x: parent.border-width + 2px; 
+    x: parent.border-width + 16px; 
     y: parent.border-width + 2px;
 
     height: text-box-height;
-    width: parent.width - (parent.border-width + 2px) * 2;
+    width: parent.width - (parent.border-width + 16px) * 2;
 
-    horizontal-alignment: center;
+    horizontal-alignment: text-alignment;
     vertical-alignment: center;
 
     text: text;
     font-size: 16pt;
+    wrap: word-wrap;
   }
   
 }
@@ -355,17 +480,17 @@ export component MainWindow inherits Window {
   in property <[int]> player-ranged-damage;
   in property <float> player-melee-crit;
   in property <float> player-ranged-crit;
+  in property <[int]> spell_icons;
+  in property <[string]> spell_names;
 
-  // Projectile data
-    in property <bool> shouldLoad;
-    in property <bool> shouldHide;
-    in property <int> x_source;
-    in property <int> y_source;
-    in property <int> x_target;
-    in property <int> y_target;
+  // Level up data
+  in-out property <int> level_up_spell_id;
+  in-out property <string> level_up_spell_name;
+  in-out property <int> level_up_spell_image;
 
   // UI state
   in-out property <bool> keyboard_enabled: true;
+  in property <bool> select-mode: true;
 
   HorizontalBox {
     VerticalBox {
@@ -374,6 +499,7 @@ export component MainWindow inherits Window {
         tile-size: root.tile_size;
         grid_height: root.grid_height;
         grid_width: root.grid_width;
+        select-mode: root.select-mode;
     
         memory_tiles: root.memory_tiles;
     
@@ -404,31 +530,39 @@ export component MainWindow inherits Window {
       ranged-min-damage: player-ranged-damage[0];
       ranged-max-damage: player-ranged-damage[1];
       ranged-crit-chance: player-ranged-crit;
+
+      spell_icons: root.spell_icons;
+      spell_names: root.spell_names;
+
+      received_input(command, x, y,) => {
+        root.received_input(command, x, y);
+      }
     }
   }
 
   intro-popup := PopupWindow {
-    padding-top: 36px;
+    padding-top: 24px;
     padding: 12px;
     close-on-click: false;
 
-    width: 128px * 3;
+    width: 128px * 2.8;
     height: 128px * 3.5;
 
-    x: map.width / 2 - 128px * 1.5;
-    y: map.height / 2 - 128px * 2;
+    x: map.width / 2 - 128px * 1.4;
+    y: map.height / 2 - 128px * 1.75;
 
     PopUpBox {
-      text: "You move on WASD.\n\nRight click an enemy to shoot.\n\nPress c to open/close doors.\n\nDescend on >.\n\n\n\nGood luck!";
-      text-box-height: 64px * 6;
+      text: "You move on WASD.\n\nRight click an enemy to shoot.\nPress c to open/close doors.\nDescend on >.\n\nStrengh favors melee.\nDexterity favours ranged.\n\nYou won't heal until you level up.\n\nBeware the cultists.";
+      text-box-height: 16px * 22;
+      text-alignment: left;
 
       GridLayout {
-        spacing: 4px;
+        spacing: 8px;
         Row { Rectangle {} }
         Row {
-          Rectangle { height: 20%; width: 15%;}
+          Rectangle { height: 25%; width: 15%;}
           Rectangle {
-            height: 20%;
+            height: 25%;
   
             ok := Button {
 
@@ -439,7 +573,7 @@ export component MainWindow inherits Window {
               }
             }
           }
-          Rectangle { height: 20%; width: 15%;}
+          Rectangle { height: 25%; width: 15%;}
         }
       }
     }
@@ -458,6 +592,7 @@ export component MainWindow inherits Window {
     PopUpBox {
       text: "You have died!";
       text-box-height: 64px;
+      text-alignment: center;
 
       GridLayout {
         spacing: 4px;
@@ -497,6 +632,7 @@ export component MainWindow inherits Window {
   }
 
   level-up-popup := PopupWindow {
+
     padding: 12px;
     close-on-click: false;
 
@@ -509,6 +645,8 @@ export component MainWindow inherits Window {
     PopUpBox {
       text: "You have leveled up!";
       text-box-height: 64px;
+      text-alignment: center;
+
       GridLayout {
         spacing: 4px;
         // Empty space at top
@@ -544,7 +682,27 @@ export component MainWindow inherits Window {
           }
           Rectangle { width: 15%;}
         }
-        Row { Rectangle { height: 25%;} }
+        // Spell option
+        Row {
+          Rectangle { width: 15%;}
+          Rectangle {
+            SpellIcon {
+              spell_name: root.level_up_spell_name;
+              image: root.level_up_spell_image;
+              size: 48px;
+              grid_x: 1;
+              text-color: Colors.black;
+              clicked => {
+
+                root.received_input(InputCommand.LevelUp, 2, root.level_up_spell_id);
+                root.close_popups();
+              }
+            }
+  
+          }
+          Rectangle { width: 15%;}
+        }
+        Row { Rectangle { height: 15%;} }
       }
     }
   }
@@ -580,8 +738,11 @@ export component MainWindow inherits Window {
     death-popup.show();
   }
 
-  public function display_level_up_popup() {
+  public function display_level_up_popup(spell_id: int, spell_name: string, spell_image: int) {
     self.keyboard_enabled = false;
+    self.level_up_spell_id = spell_id;
+    self.level_up_spell_name = spell_name;
+    self.level_up_spell_image = spell_image;
     level-up-popup.show();
   }
 

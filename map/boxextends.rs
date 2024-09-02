@@ -4,9 +4,10 @@ use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 
 use super::mapbuilder::Axis;
-use crate::ecs::spawning::OBJECT_SPAWN_NAMES;
-use crate::ecs::{spawning, ECS};
-use crate::map::{Coordinate, Euclidian};
+use crate::{
+    ecs::ecs::ECS, game::spawning, game::spawning::OBJECT_SPAWN_NAMES, map::utils::Coordinate,
+    map::utils::Euclidian,
+};
 
 // Tracks areas on the grid and supports overlapping and orthogonal adjacency checks.
 // is also responsible for dividing space when an area is split into two.
@@ -193,7 +194,11 @@ impl BoxExtends {
         }
     }
 
-    pub fn make_edge_vicinity_boxes(area: &BoxExtends, scan_distance: i32, overlap: i32) -> Vec<BoxExtends> {
+    pub fn make_edge_vicinity_boxes(
+        area: &BoxExtends,
+        scan_distance: i32,
+        overlap: i32,
+    ) -> Vec<BoxExtends> {
         // Creates hitboxes that check the sides of 'area' up to 'scan_distance'
         let above = BoxExtends {
             top_left: Coordinate {
@@ -281,7 +286,7 @@ pub struct Room {
 
 impl Room {
     pub fn new(extends: BoxExtends) -> Self {
-        Room {
+        Self {
             extends,
             spawn_table: None,
             door_locations: vec![],
@@ -312,19 +317,25 @@ impl Room {
         x_max: i32,
         y_min: i32,
         y_max: i32,
-    ) -> Coordinate {
+
+    ) -> Option<Coordinate> {
         let mut coord = Coordinate {
             x: rng.gen_range(x_min..=x_max),
             y: rng.gen_range(y_min..=y_max),
         };
+        let mut attempts = 1;
         // Ensure location is unoccupied. TODO: doesn't terminate if area is full
         while occupied.contains(&coord) || self.adjacent_to_door(coord) {
+            if attempts >= 5 {
+                return None;
+            }
             coord = Coordinate {
                 x: rng.gen_range(x_min..=x_max),
                 y: rng.gen_range(y_min..=y_max),
             };
+            attempts += 1;
         }
-        coord
+        Some(coord)
     }
 
     pub fn spawn_entities(&self, ecs: &mut ECS, depth: usize) {
@@ -344,6 +355,10 @@ impl Room {
                 if name == "Player" && ecs.has_player() {
                     let coord =
                         self.get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
+                    let coord = match coord {
+                        Some(coord) => coord,
+                        None => Coordinate { x: x_min + x_max / 2, y: y_min + y_max / 2 }
+                    };
                     ecs.set_player_position(coord);
                     continue;
                 }
@@ -355,6 +370,9 @@ impl Room {
                         // Initial location to spawn
                         let coord = self
                             .get_free_coordinate(&occupied, &mut rng, x_min, x_max, y_min, y_max);
+                        let Some(coord) = coord else {
+                            continue;
+                        };
                         (spawn_func)(ecs, coord, depth);
                         occupied.insert(coord);
                     }

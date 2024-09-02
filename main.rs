@@ -1,21 +1,14 @@
-use std::fs::File;
-use std::io::prelude::*;
-use std::path::Path;
+use crate::game::core::Game;
 
-use game::Game;
-use serde_json;
-use serde_json::Result;
-
-use logger::MessageLog;
-use logger::LOG;
-use map::{Coordinate, GameMap, GameMapSerializable};
+use map::utils::Coordinate;
+use utils::logger::MessageLog;
+use utils::logger::LOG;
 
 mod ecs;
-mod event;
 mod game;
-mod logger;
-mod los;
 mod map;
+mod utils;
+mod playground;
 
 slint::include_modules!();
 
@@ -56,6 +49,9 @@ fn set_up_input(mut game: Game, window: &MainWindow) {
             InputCommand::Shoot => {
                 game.shoot_command(Coordinate { x, y });
             }
+            InputCommand::Spell => {
+                game.cast_spell_command(x);
+            }
             InputCommand::Descend => {
                 game.descend_command();
             }
@@ -89,7 +85,8 @@ fn display_popup(game: &Game, window: &MainWindow) {
         window.invoke_display_death_popup();
     }
     if game.is_player_ready_for_level() {
-        window.invoke_display_level_up_popup();
+        let (spell_id, spell_name, spell_image) = Game::get_level_up_spell();
+        window.invoke_display_level_up_popup(spell_id, spell_name.into(), spell_image);
     }
 }
 
@@ -118,7 +115,14 @@ fn update_game_info(game: &Game, window: &MainWindow) {
         melee_crit,
         ranged_damage,
         ranged_crit,
+        spell_names,
+        spell_icons,
     ) = game.get_player_info();
+
+    let spell_names: Vec<slint::SharedString> = spell_names
+        .into_iter()
+        .map(|str| slint::SharedString::from(str))
+        .collect();
 
     let depth = game.get_map_info();
 
@@ -136,6 +140,8 @@ fn update_game_info(game: &Game, window: &MainWindow) {
     window.set_player_melee_crit(melee_crit);
     window.set_player_ranged_damage(ranged_damage.into());
     window.set_player_ranged_crit(ranged_crit);
+    window.set_spell_icons(std::rc::Rc::new(slint::VecModel::from(spell_icons)).into());
+    window.set_spell_names(std::rc::Rc::new(slint::VecModel::from(spell_names)).into());
 }
 
 fn update_tile_map(game: &Game, window: &MainWindow) {
@@ -152,45 +158,6 @@ fn update_tile_map(game: &Game, window: &MainWindow) {
     let tiles = std::rc::Rc::new(slint::VecModel::from(tiles));
 
     window.set_memory_tiles(tiles.into());
-}
-
-fn save_map(map: &GameMap) {
-    let json_map = serde_json::to_string_pretty(&map.to_serializable());
-    let json_map = match json_map {
-        Ok(json) => json,
-        Err(reason) => panic!("Could not be serialized: {}", reason),
-    };
-
-    let path_to_map = Path::new("levelmap.json");
-    let path_name = path_to_map.display();
-
-    let mut save_file = match File::create(&path_to_map) {
-        Ok(file) => file,
-        Err(reason) => panic!("Could not open {}: {}", path_name, reason),
-    };
-
-    match save_file.write_all(json_map.as_bytes()) {
-        Ok(_) => println!("Successfully saved file {}", path_name),
-        Err(reason) => panic!("Could not write to file {}: {}", path_name, reason),
-    }
-}
-
-fn load_map(path: &Path) -> GameMap {
-    let path_to_map = Path::new(path);
-    let path_name = path_to_map.display();
-
-    let save_file = match File::open(&path_to_map) {
-        Ok(file) => file,
-        Err(reason) => panic!("Could not open {}: {}", path_name, reason),
-    };
-
-    let deserialized: Result<GameMapSerializable> = serde_json::from_reader(save_file);
-    let deserialized = match deserialized {
-        Ok(map) => map,
-        Err(reason) => panic!("Error parsing map from file {}: {}", path_name, reason),
-    };
-
-    GameMap::from_serializable(deserialized)
 }
 
 // Spell ideas
