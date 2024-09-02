@@ -79,8 +79,6 @@ pub fn make_player(ecs: &mut ECS, start: Coordinate, _depth: usize) {
         Component::BumpResponse(IndexedData::new_with(take_damage.clone())),
         Component::ShotResponse(IndexedData::new_with(take_damage)),
         Component::FireResponse(IndexedData::new_with(flammable)),
-        Component::Spell(IndexedData::new_with(spelldefinitions::FLAMES.with(|spell| spell.clone()))),
-        Component::Spell(IndexedData::new_with(spelldefinitions::BRITTLE.with(|spell| spell.clone()))),
     ];
 
     let new_id = ecs.create_entity();

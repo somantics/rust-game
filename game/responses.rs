@@ -1,5 +1,7 @@
 use std::vec;
 
+use rand::{thread_rng, Rng};
+
 use crate::{
     ecs::{
         ecs::{
@@ -432,27 +434,21 @@ pub fn default_burn_response(
     let (maybe_name, _components) = take_component_from_refs(ComponentType::Name, &components);
     match (maybe_burn, maybe_health) {
         (
-            Some(Component::DurationEffect(IndexedData{index, data: DurationEffect(duration, EffectType::Burning)})),
+            Some(Component::DurationEffect(IndexedData{index, data: DurationEffect(_, EffectType::Burning)})),
             Some(Component::Health(health_data)),
         ) => {
-            if *duration == 0 {
-                return vec![Delta::DeleteComponent(DeleteComponentOrder{
-                    component_id: *index,
-                    entity_id: None,
-                })];
-            }
-
-            if let Some(Component::Name(name_data)) = maybe_name {
-                let msg = logger::generate_is_burning_message(&name_data.data, 1);
-                logger::log_message(&msg);
-            }
             let damage_taken = Health {
-                current: -1,
+                current: -thread_rng().gen_range(1..=3),
                 ..Default::default()
             };
-            vec![Delta::Change(Component::Health(
-                health_data.make_change(damage_taken),
-            ))]
+            if let Some(Component::Name(name_data)) = maybe_name {
+                let msg = logger::generate_is_burning_message(&name_data.data, damage_taken.current.abs());
+                logger::log_message(&msg);
+            }
+            
+            vec![
+                Delta::Change(Component::Health(health_data.make_change(damage_taken)))
+            ]
         }
         (
             None,

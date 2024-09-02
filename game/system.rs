@@ -328,6 +328,7 @@ impl System for Duration {
     }
 
     fn run_next(&mut self, components: &[&Component], _ecs: &ECS, _map: &GameMap) -> Vec<Delta> {
+        // bug here, if you have more than one duration effect this might not happen
         let (maybe_effect, _components) =
             take_component_from_refs(ComponentType::DurationEffect, components);
         let Some(Component::DurationEffect(indexed_effect)) = maybe_effect else {
