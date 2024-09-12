@@ -8,6 +8,7 @@ mod ecs;
 mod game;
 mod map;
 mod utils;
+
 mod playground;
 
 slint::include_modules!();

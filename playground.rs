@@ -2,12 +2,15 @@ use std::any::Any;
 
 use crate::game::components::spells::Spell;
 
-#[derive(Debug, Clone)]
-struct NewHealth {}
+pub trait NewComp {}
 
-impl NewComp for NewHealth {}
+pub trait Diff {
+    type BaseType;
+}
 
-trait NewComp {}
+pub trait NewDiffable {
+    fn apply_diff<T: Any + Diff<BaseType = Self>> (&mut self, other: &T);
+}
 
 fn get_comp_clone<T: NewComp + Clone + 'static>(comps: &'static [&'static dyn NewComp]) -> Option<T> {
     comps
@@ -29,12 +32,12 @@ fn get_comp_copy<T: NewComp + Copy + 'static>(comps:  &'static [&'static dyn New
 
 struct TestCompDiff {
     bool: Option<bool>,
-    vec: Option<Vec<usize>>,
+    vec: Option<Vec<usize>>, //vecs need to be options, because there's a difference between diff with empty vec and no diff at all
     spell: Option<Spell>,
 }
 
 impl Diff for TestCompDiff {
-    type Item = TestComp;
+    type BaseType = TestComp;
 
 }
 
@@ -45,7 +48,7 @@ struct TestComp {
 }  
 
 impl NewDiffable for TestComp {
-    fn apply_diff<T: Any + Diff<Item = Self>> (&mut self, other: &T) {
+    fn apply_diff<T: Any + Diff<BaseType = Self>> (&mut self, other: &T) {
         let other_any = other as &dyn Any;
         match other_any.downcast_ref::<TestCompDiff>() {
             Some(diff) => {
@@ -64,13 +67,4 @@ impl NewDiffable for TestComp {
             None => {}
         };
     }
-}
-
-trait Diff {
-    type Item;
-
-}
-
-trait NewDiffable {
-    fn apply_diff<T: Any + Diff<Item = Self>> (&mut self, other: &T);
 }
