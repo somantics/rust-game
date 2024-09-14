@@ -1,4 +1,6 @@
 
+use serde::{Deserialize, Serialize};
+
 use crate::ecs::component::Diffable;
 use crate::ecs::ecs::{Delta,ECS};
 
@@ -6,11 +8,11 @@ use crate::ecs::entity::Entity;
 use crate::ecs::system::ComponentQuery;
 use crate::utils::logger;
 
-use super::core:: ImageHandle;
+use super::core::{ImageData,  ImageHandle};
 
 type EffectFunction = fn(&[&Entity], &ECS) -> Vec<Delta>;
 
-#[derive(Debug, Default, Clone, Copy)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
 pub enum CooldownState {
     #[default]
     Available,
@@ -68,3 +70,24 @@ impl Diffable for Spell {
 }
 
 
+// new version under construction
+#[derive(Debug, Clone)]
+pub struct Spellbook {
+    spells: Vec<SpellEntry>
+}
+
+#[derive(Debug, Clone)]
+pub struct SpellEntry {
+    pub id: usize,
+    pub image: ImageHandle,
+    pub castable: CooldownState,
+}
+
+#[derive(Debug, Clone)]
+pub struct SpellData {
+    name: &'static str,
+    icon: ImageData,
+    cooldown_icon: ImageData,
+    query: ComponentQuery,
+    effect: EffectFunction,
+}
